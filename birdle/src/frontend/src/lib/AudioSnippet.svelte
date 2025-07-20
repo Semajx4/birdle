@@ -2,7 +2,7 @@
     let props = $props()
     let progress = $state(0);
     let startOffset = 2
-  let duration = 3; // play only 3 seconds
+  let duration = 30; // play only 3 seconds
   let audio: HTMLAudioElement;
   let animationFrame: number;
 

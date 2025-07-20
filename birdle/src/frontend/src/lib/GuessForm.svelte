@@ -1,21 +1,32 @@
 <script lang="ts">
-	import { fade } from 'svelte/transition';
+    import AnswerText from "./AnswerText.svelte";
+    import { fade } from "svelte/transition";
+    import type { Bird } from "../types";
+    import AutoCompleteRow from "./AutoCompleteRow.svelte";
 
     let prop = $props();
 
-	let xVisible = $state(false);
-	let tickVisible = $state(false);
+    let xVisible = $state(false);
+    let tickVisible = $state(false);
 
     let correct = $state(false);
 
-    let birdOfTheDay = $state(null);
+    let birdOfTheDay = $state<Bird | null>(null);
 
-   $effect(() => {
-    if (prop.bird) {
-        birdOfTheDay = prop.bird;
-    }
+    let allBirds = $state<Bird[] | null>(null);
+
+    let possibleOptions = $state<Bird[] | null>(null);
+
+    let guessArray = new Array<String>();
+
+    $effect(() => {
+        if (prop.bird) {
+            birdOfTheDay = prop.bird;
+        }
+        if (prop.allBirds) {
+            allBirds = prop.allBirds;
+        }
     });
-
 
     $effect(() => {
         if (prop.reset === true) {
@@ -23,85 +34,143 @@
             xVisible = false;
             tickVisible = false;
             guessCounter = 0;
-            guess = ""
         }
     });
 
+    let inputField = $state();
+
+    let guessCounter = $state(0);
+
+    let guess = $state<Bird>({
+        id: '',
+        common_name: '',
+        scientific_name: '',
+        audio_path: '',
+        order: '',
+        family: '',
+        genus: '',
+        image_path: ''
+    });
+    let input = $state("")
+
+    const MAXGUESSES = 6
 
 
-
-    let inputField = $state()
-
-    let guessCounter = $state(0)
-
-    let guess
     const submitGuess = () => {
-        checkGuess(guess.toLowerCase())
-    }
+        checkGuess(guess);
+    };
     const handleInput = (event) => {
-        if(event.key !== 'Enter') return;
-        submitGuess()
-    }
+        if (event.key !== "Enter") {
+            autoCompleteClicked = false;
+            possibleOptions = new Array<Bird>();
+            if (allBirds) {
+                let currentGuess = input;
+                for (const elem of allBirds) {
+                    if (
+                        currentGuess &&
+                        currentGuess !== "" &&
+                        (guessMatchesBirdName(currentGuess, elem))
+                        
+                    ) {
+                        possibleOptions.push(elem);
+                    } 
+                }
+            }
+
+            return;
+        }
+    };
+
+    const guessMatchesBirdName = (guess, bird) => {
+
+
+        return bird.common_name.toLowerCase().includes(guess.toLowerCase()) ||
+        bird.scientific_name.toLowerCase().includes(guess.toLowerCase());
+    };
 
     const checkGuess = (guess) => {
-        if (guess === birdOfTheDay.common_name.toLowerCase() || guess === birdOfTheDay.scientific_name.toLowerCase) {
-            inputField.value = ""
-            xVisible=false
+        guessArray = [...guessArray, guess];
+
+        if (guess === birdOfTheDay) {
+            inputField.value = "";
+            xVisible = false;
             tickVisible = true;
-            correct = true
+            correct = true;
         } else {
-            tickVisible=false
-            xVisible=true
+            tickVisible = false;
+            xVisible = true;
         }
-        guessCounter+=1;
-        inputField.value = ""
-    }
-    
+        guessCounter += 1;
+        inputField.value = "";
+    };
 
     $effect(() => {
-        if(guessCounter >= 6) {
-            alert ("you lose")
-            guessCounter = 0
+        if (guessCounter >= MAXGUESSES) {
+            guessCounter = 0;
+        }
+    });
+
+    let autoCompleteClicked = $state(false);
+
+    const autoCompleteGuess = (bird) => {
+        guess = bird;
+        input = bird.common_name
+        autoCompleteClicked = true;
+
+    };
+
+    let guessRows = $state(Array(MAXGUESSES))
+    $effect(()=> {
+        if(guessCounter >  0){
+            guessRows = Array(MAXGUESSES).fill(null).map((_, i) => guessArray[i] || null);
         }
     })
+
 </script>
 
+
+{#each guessRows as guess, i}
+  {#if guess}
+    <div class="guessRowFilled">
+      <AnswerText guess={guess} answer={birdOfTheDay} />
+    </div>
+  {:else}
+    <div class="guessRowEmpty">
+    </div>
+  {/if}
+{/each}
 <div class="guessDiv">
-    <div class="guessInputDiv">
+    <div class="autoCompleteContainer">
         {#if !correct}
-        <input bind:value={
-            () => guess,
-            (v) => guess = v.toLowerCase()}
-            bind:this={inputField}
-            class="guessInput"
-            on:keydown={handleInput}
-            placeholder="Name that bird..."
-            hidden={correct}
-        />
+            <input
+                bind:value={input}
+                bind:this={inputField}
+                class="guessInput"
+                oninput={handleInput}
+                placeholder="Name that bird..."
+                hidden={correct}
+            />
+            {#if possibleOptions !== null && possibleOptions.length > 0 && !autoCompleteClicked}
+                <div class="autoCompleteDropdown">
+                    {#each possibleOptions as possibleBird}
+                        <div
+                            class="autoCompleteRow"
+                            onclick={() => autoCompleteGuess(possibleBird)}
+                        >
+                            {possibleBird.common_name} - {possibleBird.scientific_name.toLowerCase()}
+                        </div>
+                    {/each}
+                </div>
+            {/if}
         {:else}
-        <div>
-            Well Done !!!
-        </div>
+            <div>Well Done !!!</div>
         {/if}
     </div>
-    <div class="guessIndicatorDiv">
-
-    {#if xVisible}
-    <h1 in:fade 
-    class="guessIndicator" 
-    >❌</h1>
-    {/if}
-
-    {#if tickVisible}
-    <h1 in:fade
-    class="guessIndicator" 
-    >✅</h1>
-    {/if}
-
-    </div>
 </div>
+<br />
 
 <div class="spacing">
-    <h1>Guesses: {guessCounter}/6</h1>
-    <button class="guessButton" hidden={correct} on:click={submitGuess}>Submit Guess</button>
+    <button class="guessButton" hidden={correct} onclick={() => submitGuess()}
+        >Submit Guess</button
+    >
 </div>

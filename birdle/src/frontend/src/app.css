@@ -28,7 +28,7 @@ body {
   margin: 0;
   display: flex;
   place-items: center;
-  min-width: 320px;
+  min-width: 420px;
   min-height: 100vh;
 }
 
@@ -43,6 +43,8 @@ h1 {
 
 #app {
   max-width: 1280px;
+  min-width:25rem;
+  max-height: 100%;
   margin: 0 auto;
   padding: 2rem;
   text-align: center;
@@ -169,9 +171,8 @@ button:focus-visible {
 
 /* Guess div */
 .guessDiv {
-  display: flex;
+  /* display: flex; */
   align-items: center;
-  gap: 1rem;
   width: 100%;
 }
 
@@ -180,27 +181,15 @@ button:focus-visible {
 }
 
 .guessInput {
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  border-radius: 6px;
-  border: none;
-  background: #2c2c2c;
-  color: white;
-  font-size: 1rem;
+    width: 100%;
+    max-width: 100%; /* ensures it stretches full width of container */
+    margin: 1rem 0;
+    padding: 1.5rem;
+    border-radius: 12px;
+    box-sizing: border-box;
 }
 
-.guessIndicatorDiv {
-  width: 40px;
-  display: flex;
-  padding-left: 1rem;
-  justify-content: center;
-  align-items: center;
-}
 
-.guessIndicator {
-  font-size: 1.8rem;
-  margin: 0;
-}
 
 .guessButton {
   margin-bottom: 10px;
@@ -217,3 +206,72 @@ button:focus-visible {
   margin: 1em;
   padding: 1em;
 }
+
+.guessRowEmpty {
+    width: 100%;
+    max-width: 100%; /* ensures it stretches full width of container */
+    margin: 1rem 0;
+    padding: 1rem;
+    background-color: #686363;  /* light grey */
+    border-radius: 12px;
+    min-height:3rem;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); /* subtle card shadow */
+    box-sizing: border-box;
+}
+
+
+.guessRowFilled {
+    width: 100%;
+    max-width: 100%; /* ensures it stretches full width of container */
+    margin: 1rem 0;
+    padding: 0.5rem;
+    min-height: 3rem;
+    background-color: #2a313b;  /* light grey */
+    border-radius: 12px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); /* subtle card shadow */
+    box-sizing: border-box;
+}
+
+
+.autoCompleteContainer {
+    position: relative;
+    width: 100%;
+    max-width: 400px; /* Optional: restrict width */
+  }
+
+  .guessInput {
+    width: 100%;
+    padding: 0.75rem;
+    font-size: 1rem;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+  }
+
+  .autoCompleteDropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: white;
+    border: 1px solid #ccc;
+    border-top: none;
+    border-radius: 0 0 6px 6px;
+    z-index: 1000;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    max-height: 200px;
+    overflow-y: auto;
+    color: #222121;
+  }
+
+
+  .autoCompleteRow {
+    /* padding: 0.75rem; */
+    cursor: pointer;
+    transition: background 0.2s;
+    justify-content:left;
+  }
+
+  .autoCompleteRow:hover {
+    background: #c2c3c5;
+  }
+
