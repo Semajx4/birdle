@@ -30,6 +30,7 @@
   const updateBirdOfTheDay = async () => {
     const bird = await getRandomBird();
     birdOfTheDay = bird;
+    console.log(birdOfTheDay);
     audioPath = bird.audio_path;
 
     reset = true;
@@ -46,7 +47,7 @@
 <main class="container">
   <div class="title-bar">
     <h1>Birdle 2.0</h1>
-    <button class="refresh-btn" on:click={updateBirdOfTheDay}>🔁</button>
+    <button class="refresh-btn" onclick={updateBirdOfTheDay}>🔁</button>
   </div>
 
   <div class="card">

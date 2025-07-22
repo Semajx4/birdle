@@ -3,7 +3,6 @@
     import type { Bird } from "../types";
     let prop = $props();
     let self = $state<Bird | null>(null);
-    console.log(prop.bird);
 </script>
 
 <div class="autoCompleteRow">

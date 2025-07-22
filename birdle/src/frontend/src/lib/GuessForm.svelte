@@ -3,6 +3,7 @@
     import { fade } from "svelte/transition";
     import type { Bird } from "../types";
     import AutoCompleteRow from "./AutoCompleteRow.svelte";
+    import ImageHint from "./ImageHint.svelte";
 
     let prop = $props();
 
@@ -10,6 +11,8 @@
     let tickVisible = $state(false);
 
     let correct = $state(false);
+
+    let guessStatus = $state<boolean[]>([false, false, false, false, false, false]);
 
     let birdOfTheDay = $state<Bird | null>(null);
 
@@ -46,9 +49,9 @@
         common_name: '',
         scientific_name: '',
         audio_path: '',
+        genus: '',
         order: '',
         family: '',
-        genus: '',
         image_path: ''
     });
     let input = $state("")
@@ -89,26 +92,24 @@
     };
 
     const checkGuess = (guess) => {
+        console.log(guess);
         guessArray = [...guessArray, guess];
-
-        if (guess === birdOfTheDay) {
+        if (guess.id === birdOfTheDay.id) {
             inputField.value = "";
-            xVisible = false;
-            tickVisible = true;
             correct = true;
+            guessStatus[guessCounter] = true;
         } else {
-            tickVisible = false;
-            xVisible = true;
+            guessStatus[guessCounter] = false;
         }
         guessCounter += 1;
         inputField.value = "";
     };
 
-    $effect(() => {
-        if (guessCounter >= MAXGUESSES) {
-            guessCounter = 0;
-        }
-    });
+    // $effect(() => {
+    //     if (guessCounter >= MAXGUESSES) {
+    //         guessCounter = 0;
+    //     }
+    // });
 
     let autoCompleteClicked = $state(false);
 
@@ -126,12 +127,16 @@
         }
     })
 
+
+
+
+
 </script>
 
 
 {#each guessRows as guess, i}
   {#if guess}
-    <div class="guessRowFilled">
+    <div class="guessRowFilled {guessStatus[i] ? 'correct' : 'wrong'}">
       <AnswerText guess={guess} answer={birdOfTheDay} />
     </div>
   {:else}
@@ -139,6 +144,11 @@
     </div>
   {/if}
 {/each}
+{#if birdOfTheDay !== null}
+    <div class="image-hint">
+        <ImageHint bird={birdOfTheDay} guessNumber={guessCounter} correct="{guessStatus}" />
+    </div>
+{/if}
 <div class="guessDiv">
     <div class="autoCompleteContainer">
         {#if !correct}
@@ -167,10 +177,19 @@
         {/if}
     </div>
 </div>
-<br />
 
-<div class="spacing">
-    <button class="guessButton" hidden={correct} onclick={() => submitGuess()}
+<div class="">
+    <button class="guessButton" hidden={correct} onclick={guess.id !== "" ? () => submitGuess() : console.log("no guess")}
         >Submit Guess</button
     >
 </div>
+
+<style>
+    .correct {
+        border: 3px solid #538D4E;
+    }
+
+    .wrong {
+        border: 3px solid red;
+    }
+</style>
