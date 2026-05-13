@@ -11,13 +11,13 @@
   let reset = $state(false);
 
   async function getRandomBird() {
-    const res = await fetch("http://localhost:3000/api/bird/random");
+    const res = await fetch("http://localhost:8000/api/bird/random");
     if (!res.ok) throw new Error("Failed to fetch bird data");
     return await res.json();
   }
 
   async function getAllBirds() {
-    const res = await fetch("http://localhost:3000/api/bird/all");
+    const res = await fetch("http://localhost:8000/api/bird/all");
     if (!res.ok) throw new Error("Failed to fetch bird data");
     const data = await res.json();
     return data as Bird[];
@@ -45,11 +45,6 @@
 </script>
 
 <main class="container">
-  <div class="title-bar">
-    <h1>Birdle 2.0</h1>
-    <button class="refresh-btn" onclick={updateBirdOfTheDay}>🔁</button>
-  </div>
-
   <div class="card">
     <AudioSnippet audioSource={audioPath} />
   </div>

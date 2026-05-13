@@ -47,36 +47,4 @@
     {/if}
 </div>
 <style>
-    .name-line {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-}
-
-.name-line p {
-  font-style: italic;
-  margin: 0;
-}
-
-.taxonomy-line {
-  display: flex;
-  gap: 1rem;
-  margin-top: 0.25rem;
-}
-
-.taxonomy-line h6 {
-  margin: 0;
-  font-style: italic;
-}
-
-.success {
-    color: #B59F3B;
-}
-.failure {
-    color: red;
-}
-
-.correct {
-    color: #538D4E;
-}
-</style>
+  </style>

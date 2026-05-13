@@ -5,4 +5,4 @@ import path from "path"
 export default defineConfig({
   root: 'src/frontend',
   plugins: [svelte()],
-})
+  })
