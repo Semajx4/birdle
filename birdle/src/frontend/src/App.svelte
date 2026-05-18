@@ -48,7 +48,7 @@
     <div
         id="splash"
         class="splash"
-        style="display: {started ? 'none' : 'block'}"
+        style="display: {started ? 'none' : 'flex'}"
     >
         <div class="splash-card">
             <div class="title-area">
