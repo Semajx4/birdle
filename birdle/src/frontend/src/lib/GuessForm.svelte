@@ -5,7 +5,7 @@
 
     let prop = $props();
 
-    const MAXGUESSES = 6;
+    const MAXGUESSES = 5;
     let correct = $state(false);
     let guessStatus = $state<boolean[]>([
         false,
@@ -19,7 +19,7 @@
     let allBirds = $state<Bird[] | null>(null);
     let possibleOptions = $state<Bird[] | null>(null);
     let guessArray = $state(new Array<Bird>());
-    let inputField = $state();
+    let inputField = $state<HTMLInputElement>();
     let guessCounter = $state(0);
     let input = $state("");
     let autoCompleteClicked = $state(false);
@@ -120,7 +120,9 @@
         possibleOptions = null;
         autoCompleteClicked = false;
 
-        if (inputField) inputField.value = "";
+        if (inputField) {
+            inputField.value = "";
+        }
     };
 
     const submitGuess = () => {
@@ -129,16 +131,6 @@
         }
     };
 </script>
-
-{#each guessRows as guessRow, i}
-    {#if guessRow}
-        <div class="guessRowFilled {guessStatus[i] ? 'correct' : 'wrong'}">
-            <AnswerText guess={guessRow} answer={birdOfTheDay} />
-        </div>
-    {:else}
-        <div class="guessRowEmpty"></div>
-    {/if}
-{/each}
 
 {#if birdOfTheDay !== null}
     <div class="image-hint">
@@ -149,6 +141,16 @@
         />
     </div>
 {/if}
+
+{#each guessRows as guessRow, i}
+    {#if guessRow}
+        <div class="guessRowFilled {guessStatus[i] ? 'correct' : 'wrong'}">
+            <AnswerText guess={guessRow} answer={birdOfTheDay} />
+        </div>
+    {:else}
+        <div class="guessRowEmpty"></div>
+    {/if}
+{/each}
 
 <div class="guessDiv">
     <div class="autoCompleteContainer">
