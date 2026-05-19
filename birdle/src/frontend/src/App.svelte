@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onMount, tick } from "svelte";
+    import { getAllBirds, getRandomBird } from "./api";
     import type { Bird } from "./types";
     import AudioSnippet from "./lib/AudioSnippet.svelte";
     import GuessForm from "./lib/GuessForm.svelte";
@@ -10,19 +11,6 @@
     let allBirds = $state<Bird[] | null>(null);
     let reset = $state(false);
     let started = $state(false);
-
-    async function getRandomBird() {
-        const res = await fetch("http://localhost:8000/api/bird/random");
-        if (!res.ok) throw new Error("Failed to fetch bird data");
-        return await res.json();
-    }
-
-    async function getAllBirds() {
-        const res = await fetch("http://localhost:8000/api/bird/all");
-        if (!res.ok) throw new Error("Failed to fetch bird data");
-        const data = await res.json();
-        return data as Bird[];
-    }
 
     const updateAllBirds = async () => {
         allBirds = await getAllBirds();
@@ -42,6 +30,7 @@
         await updateBirdOfTheDay();
         await updateAllBirds();
     });
+    export { getAudio };
 </script>
 
 <main class="container">

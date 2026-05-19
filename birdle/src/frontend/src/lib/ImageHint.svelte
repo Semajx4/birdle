@@ -1,4 +1,6 @@
 <script lang="ts">
+    import { getImageUrl } from "../api";
+
     const BASE_PATH = "/images/";
     const prop = $props();
 
@@ -9,7 +11,7 @@
 
     $effect(() => {
         if (prop.bird) {
-            imagePath = BASE_PATH + prop.bird.image_path;
+            imagePath = prop.bird.image_path;
         }
     });
 
@@ -22,7 +24,7 @@
 
 <div>
     <img
-        src={imagePath}
+        src={getImageUrl(imagePath)}
         class="blurred-image bird-image"
         style="filter: blur({blurAmount}px);"
         alt="Blurred image of the mystery bird"
