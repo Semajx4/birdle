@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from services.game import create_round, get_all_birds, check_guess, resolve_audio_path, resolve_image_path
+from services.game import create_round, get_all_birds, check_guess, resolve_audio_path, resolve_image_path, get_answer_if_game_over
 from schemas import GuessRequest
 
 router = APIRouter()
@@ -19,6 +19,10 @@ def read_image(round_id: str):
 @router.get("/all")
 def get_birds():
     return get_all_birds()
+
+@router.get("/reveal/{round_id}")
+def get_anwer(round_id: str):
+    return get_answer_if_game_over(round_id)
 
 @router.post("/guess")
 def guess(req: GuessRequest):

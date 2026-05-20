@@ -38,3 +38,12 @@ export function getAudioUrl(round_id: string): string {
 export function getImageUrl(round_id: string): string {
     return `/api/bird/image/${round_id}`;
 }
+
+export async function getAnswer(round_id: string): Promise<Bird | null> {
+    const res = await fetch(`/api/bird/reveal/${round_id}`);
+
+    if (!res.ok) return null;
+
+    const data: Bird = await res.json();
+    return data;
+}

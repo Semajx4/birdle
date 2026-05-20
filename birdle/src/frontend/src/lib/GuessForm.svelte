@@ -2,7 +2,7 @@
     import AnswerText from "./AnswerText.svelte";
     import type { Bird, FullGuess, Guess } from "../types";
     import ImageHint from "./ImageHint.svelte";
-    import { postGuess } from "../api";
+    import { postGuess, getAnswer } from "../api";
 
     let prop = $props();
 
@@ -14,6 +14,7 @@
     let allBirds = $state<Array<Bird> | null>(null);
     let correct = $state<boolean>(false);
     let possibleOptions = $state<Bird[] | null>(null);
+    let answer = $state<Bird | null>(null);
 
     let guessArray = $state(new Array<Bird>());
 
@@ -51,6 +52,14 @@
         if (prop.roundID) roundID = prop.roundID;
         if (prop.allBirds) allBirds = prop.allBirds;
         if (prop.audioPath) audioPath = prop.audioPath;
+    });
+
+    $effect(() => {
+        if (guessCounter === MAXGUESSES && !answer && roundID) {
+            (async () => {
+                answer = await getAnswer(roundID);
+            })();
+        }
     });
 
     const guessMatchesBirdName = (guess: string, bird: Bird) => {
@@ -157,7 +166,7 @@
             <div>Well Done!!!</div>
         {:else}
             <div>
-                No more guesses! The bird was {currentGuess.bird?.common_name}.
+                No more guesses! The bird was {answer?.common_name}.
             </div>
         {/if}
     </div>

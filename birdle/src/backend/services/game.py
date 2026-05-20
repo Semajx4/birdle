@@ -189,3 +189,23 @@ def check_guess(req):
                 genus=genus,
                 ),
             )
+
+
+def get_answer_if_game_over(round_id: str):
+    round_state = active_rounds.get(round_id)
+
+    if not round_state:
+        return {"error": "invalid round"}
+
+    if round_state.guesses < MAX_GUESSES:
+        return {"error": "Game not finished"}
+
+    bird = round_state.bird
+    return {
+            "id": bird.id,
+            "common_name": bird.common_name,
+            "scientific_name": bird.scientific_name,
+            "order": bird.order,
+            "family": bird.family,
+            "genus": bird.genus,
+            }
