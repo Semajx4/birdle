@@ -17,20 +17,6 @@
     };
 
     const getBirds = async () => {
-  async function getRandomBird() {
-    const res = await fetch("/api/bird/random");
-    if (!res.ok) throw new Error("Failed to fetch bird data");
-    return await res.json();
-  }
-
-  async function getAllBirds() {
-    const res = await fetch("/api/bird/all");
-    if (!res.ok) throw new Error("Failed to fetch bird data");
-    const data = await res.json();
-    return data as Bird[];
-  }
-
-    const updateAllBirds = async () => {
         allBirds = await getAllBirds();
     };
 
