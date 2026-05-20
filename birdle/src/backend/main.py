@@ -59,4 +59,6 @@ def get_all_birds_route():
     return [Bird(bird).to_dict() for bird in bird_list]
 
 # Mount static files LAST so API routes take priority
+app.mount("/audio", StaticFiles(directory="audio"), name="audio")
+app.mount("/images", StaticFiles(directory="bird_images"), name="images")
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
