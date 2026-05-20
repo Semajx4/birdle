@@ -20,3 +20,6 @@ app.include_router(bird.router, prefix="/api/bird")
 
 # Mount static files LAST so API routes take priority
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/audio", StaticFiles(directory="audio"), name="audio")
+app.mount("/images", StaticFiles(directory="bird_images"), name="images")
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
