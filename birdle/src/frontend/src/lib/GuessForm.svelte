@@ -1,12 +1,22 @@
 <script lang="ts">
     import AnswerText from "./AnswerText.svelte";
-    import type { Bird } from "../types";
+    import type { Bird, FullGuess, Guess } from "../types";
     import ImageHint from "./ImageHint.svelte";
+    import { postGuess } from "../api";
 
     let prop = $props();
 
     const MAXGUESSES = 5;
-    let correct = $state(false);
+
+    let roundID = $state<string | null>(null);
+    let audioPath = $state<string | null>("");
+    let imageVersion = $state(0);
+    let allBirds = $state<Array<Bird> | null>(null);
+    let correct = $state<boolean>(false);
+    let possibleOptions = $state<Bird[] | null>(null);
+
+    let guessArray = $state(new Array<Bird>());
+
     let guessStatus = $state<boolean[]>([
         false,
         false,
@@ -15,66 +25,33 @@
         false,
         false,
     ]);
-    let birdOfTheDay = $state<Bird | null>(null);
-    let allBirds = $state<Bird[] | null>(null);
-    let possibleOptions = $state<Bird[] | null>(null);
-    let guessArray = $state(new Array<Bird>());
+
     let inputField = $state<HTMLInputElement>();
     let guessCounter = $state(0);
     let input = $state("");
     let autoCompleteClicked = $state(false);
     let guessRows = $state(Array(MAXGUESSES).fill(null));
 
-    let currentGuess = $state<Bird>({
-        id: "",
-        common_name: "",
-        scientific_name: "",
-        audio_path: "",
-        genus: "",
-        order: "",
-        family: "",
-        image_path: "",
-    });
-
-    $effect(() => {
-        if (prop.bird) birdOfTheDay = prop.bird;
-        if (prop.allBirds) allBirds = prop.allBirds;
-    });
-
-    $effect(() => {
-        if (prop.reset === true) {
-            correct = false;
-            guessCounter = 0;
-            guessArray = [];
-            guessRows = Array(MAXGUESSES).fill(null);
-            guessStatus = [false, false, false, false, false, false];
-            input = "";
-            currentGuess = emptyBird();
-            possibleOptions = null;
-            autoCompleteClicked = false;
-        }
-    });
-
-    $effect(() => {
-        if (guessCounter > 0) {
-            guessRows = Array(MAXGUESSES)
-                .fill(null)
-                .map((_, i) => guessArray[i] || null);
-        }
-    });
-
-    function emptyBird(): Bird {
-        return {
+    let currentGuess = $state<FullGuess>({
+        guess: {
+            round_id: "",
+            guess_id: "",
+        },
+        bird: {
             id: "",
             common_name: "",
             scientific_name: "",
-            audio_path: "",
-            genus: "",
             order: "",
             family: "",
-            image_path: "",
-        };
-    }
+            genus: "",
+        },
+    });
+
+    $effect(() => {
+        if (prop.roundID) roundID = prop.roundID;
+        if (prop.allBirds) allBirds = prop.allBirds;
+        if (prop.audioPath) audioPath = prop.audioPath;
+    });
 
     const guessMatchesBirdName = (guess: string, bird: Bird) => {
         if (guessArray.some((g) => g.id === bird.id)) return;
@@ -87,8 +64,8 @@
     const handleInput = (event: KeyboardEvent) => {
         if (event.key === "Enter") return;
         autoCompleteClicked = false;
-        possibleOptions = [];
         if (allBirds && input && input !== "") {
+            possibleOptions = [];
             for (const elem of allBirds) {
                 if (guessMatchesBirdName(input, elem)) {
                     possibleOptions.push(elem);
@@ -98,54 +75,56 @@
     };
 
     const autoCompleteGuess = (bird: Bird) => {
-        currentGuess = bird;
+        currentGuess = {
+            guess: {
+                round_id: roundID,
+                guess_id: bird.id,
+            },
+            bird: bird,
+        };
         input = bird.common_name;
         autoCompleteClicked = true;
-        possibleOptions = null;
     };
 
-    const checkGuess = (guess: Bird) => {
+    const checkGuess = async (fullGuess: FullGuess) => {
         if (guessCounter >= MAXGUESSES || correct) return;
 
-        guessArray = [...guessArray, guess];
-        guessStatus[guessCounter] = guess.id === birdOfTheDay?.id;
-
-        if (guess.id === birdOfTheDay?.id) {
-            correct = true;
-        }
-
         guessCounter += 1;
-        input = "";
-        currentGuess = emptyBird();
-        possibleOptions = null;
-        autoCompleteClicked = false;
 
-        if (inputField) {
-            inputField.value = "";
-        }
+        const res = await postGuess(fullGuess.guess);
+
+        correct = res.correct;
+        imageVersion += 1;
+        input = "";
+
+        guessStatus[guessCounter - 1] = correct;
+        guessArray = [...guessArray, fullGuess.bird];
+
+        guessRows = [...guessRows];
+        guessRows[guessCounter - 1] = {
+            ...fullGuess.bird,
+            hints: res.hints,
+            correct: res.correct,
+        };
     };
 
     const submitGuess = () => {
-        if (currentGuess.id !== "") {
+        if (currentGuess.guess.guess_id !== "") {
             checkGuess(currentGuess);
         }
     };
 </script>
 
-{#if birdOfTheDay !== null}
+{#if roundID}
     <div class="image-hint">
-        <ImageHint
-            bird={birdOfTheDay}
-            guessNumber={guessCounter}
-            correct={guessStatus}
-        />
+        <ImageHint {roundID} {imageVersion} />
     </div>
 {/if}
 
 {#each guessRows as guessRow, i}
     {#if guessRow}
         <div class="guessRowFilled {guessStatus[i] ? 'correct' : 'wrong'}">
-            <AnswerText guess={guessRow} answer={birdOfTheDay} />
+            <AnswerText guess={guessRow} />
         </div>
     {:else}
         <div class="guessRowEmpty"></div>
@@ -162,7 +141,7 @@
                 onkeyup={handleInput}
                 placeholder="Name that bird..."
             />
-            {#if possibleOptions !== null && possibleOptions.length > 0 && !autoCompleteClicked}
+            {#if allBirds !== null && allBirds.length > 0 && !autoCompleteClicked}
                 <div class="autoCompleteDropdown">
                     {#each possibleOptions as possibleBird}
                         <div
@@ -178,7 +157,7 @@
             <div>Well Done!!!</div>
         {:else}
             <div>
-                No more guesses! The bird was {birdOfTheDay?.common_name}.
+                No more guesses! The bird was {currentGuess.bird?.common_name}.
             </div>
         {/if}
     </div>
@@ -189,7 +168,6 @@
         class="guessButton"
         hidden={correct || guessCounter >= MAXGUESSES}
         onclick={submitGuess}
-        disabled={currentGuess.id === ""}
     >
         Submit Guess
     </button>

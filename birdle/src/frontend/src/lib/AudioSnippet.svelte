@@ -12,7 +12,7 @@
 
     function play() {
         if (!audio) {
-            audio = new Audio(getAudioUrl(props.audioSource));
+            audio = new Audio(getAudioUrl(props.roundID));
 
             audio.addEventListener("loadedmetadata", () => {
                 startPlayback();

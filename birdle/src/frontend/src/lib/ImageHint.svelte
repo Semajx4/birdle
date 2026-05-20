@@ -1,35 +1,36 @@
 <script lang="ts">
     import { getImageUrl } from "../api";
 
-    const BASE_PATH = "/images/";
     const prop = $props();
 
-    const maxBlur = 10;
+    let roundID = $state<string>("");
+    let guessNumber = $state<number>(0);
 
-    let imagePath = $state<string>("");
-    let blurAmount = $state<number>(10); // start fully blurred
+    // cache buster
+    let refreshKey = $state<number>(0);
 
     $effect(() => {
-        if (prop.bird) {
-            imagePath = prop.bird.image_path;
+        if (prop.roundID) {
+            roundID = prop.roundID;
         }
+
+        if (prop.imageVersion !== undefined) {
+            guessNumber = prop.imageVersion;
+        }
+
+        refreshKey = guessNumber;
     });
 
-    $effect(() => {
-        blurAmount = prop.correct[prop.guessNumber - 1]
-            ? 0
-            : Math.max(0, maxBlur - prop.guessNumber * 2);
-    });
+    const imageUrl = $derived(
+        roundID ? `${getImageUrl(roundID)}?v=${refreshKey}` : "",
+    );
 </script>
 
-<div>
-    <img
-        src={getImageUrl(imagePath)}
-        class="blurred-image bird-image"
-        style="filter: blur({blurAmount}px);"
-        alt="Blurred image of the mystery bird"
-    />
-</div>
+{#if roundID}
+    <div>
+        <img src={imageUrl} class="bird-image" alt="Bird of the round" />
+    </div>
+{/if}
 
 <style>
 </style>

@@ -1,50 +1,37 @@
 <script lang="ts">
     let prop = $props();
 
-    let guess = prop.guess;
-    let answer = prop.answer;
-
-
-    const sameOrder = answer.order === guess.order
-    const sameFamily = answer.family === guess.family
-    const sameGenus = answer.genus === guess.genus
-
-
+    const guess = prop.guess;
+    const hints = prop.guess.hints;
 </script>
 
-<div class="guess-card" >
-  <div class="name-line">
-    <b>{guess.common_name}</b>
-    <p><em>{guess.scientific_name}</em></p>
-  </div>
+<div class="guess-card">
+    <div class="name-line">
+        <b>{guess.common_name}</b>
+        <p><em>{guess.scientific_name}</em></p>
+    </div>
 
-    {#if sameFamily && sameFamily && sameGenus}
-        <div class="taxonomy-line">
-            <h6 class="correct">{guess.order}</h6>
-            <h6 class="correct">{guess.family}</h6>
-            <h6 class="correct">{guess.genus}</h6>
-        </div>
+    <div class="taxonomy-line">
+        <h6 class={hints.order ? "correct" : "wrong"}>
+            {guess.order}
+        </h6>
 
-    {:else}
-      <div class="taxonomy-line">
-        {#if sameOrder}
-            <h6 class="success">{guess.order}</h6>
-        {:else}
-            <h6 class="failure">{guess.order}</h6>
-        {/if}
-        {#if sameFamily}
-            <h6 class="success">{guess.family}</h6>
-        {:else}
-            <h6 class="failure">{guess.family}</h6>
-        {/if}
+        <h6 class={hints.family ? "correct" : "wrong"}>
+            {guess.family}
+        </h6>
 
-        {#if sameGenus}
-            <h6 class="success">{guess.genus}</h6>
-        {:else}
-            <h6 class="failure">{guess.genus}</h6>
-        {/if}
-      </div>
-    {/if}
+        <h6 class={hints.genus ? "correct" : "wrong"}>
+            {guess.genus}
+        </h6>
+    </div>
 </div>
+
 <style>
-  </style>
+    .correct {
+        color: #538d4e;
+    }
+
+    .wrong {
+        color: #b91c1c;
+    }
+</style>

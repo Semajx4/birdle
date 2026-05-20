@@ -1,15 +1,6 @@
-import json
-from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import random
-import uuid
-import os
-from fastapi.responses import JSONResponse
-from requests import Session
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-from schemas import Bird
 
 app = FastAPI()
 
