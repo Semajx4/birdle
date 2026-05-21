@@ -12,6 +12,7 @@ class Hints(BaseModel):
 class GuessResponse(BaseModel):
     correct: bool
     hints: Hints
+    finished: bool
 
 class BirdPublic(BaseModel):
     id: str
@@ -58,4 +59,7 @@ class RoundState:
     def __init__(self, bird):
         self.bird = bird
         self.guesses = 0
+        self.finished = False
+        self.won = False
+        self.reveal_ready = False
 

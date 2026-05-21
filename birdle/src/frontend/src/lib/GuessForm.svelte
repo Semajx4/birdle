@@ -1,6 +1,6 @@
 <script lang="ts">
     import AnswerText from "./AnswerText.svelte";
-    import type { Bird, FullGuess, Guess } from "../types";
+    import type { Bird, FullGuess } from "../types";
     import ImageHint from "./ImageHint.svelte";
     import { postGuess, getAnswer } from "../api";
 
@@ -54,14 +54,6 @@
         if (prop.audioPath) audioPath = prop.audioPath;
     });
 
-    $effect(() => {
-        if (guessCounter === MAXGUESSES && !answer && roundID) {
-            (async () => {
-                answer = await getAnswer(roundID);
-            })();
-        }
-    });
-
     const guessMatchesBirdName = (guess: string, bird: Bird) => {
         if (guessArray.some((g) => g.id === bird.id)) return;
         return (
@@ -98,12 +90,17 @@
     const checkGuess = async (fullGuess: FullGuess) => {
         if (guessCounter >= MAXGUESSES || correct) return;
 
-        guessCounter += 1;
-
         const res = await postGuess(fullGuess.guess);
 
         correct = res.correct;
-        imageVersion += 1;
+
+        if (res.finished && !answer) {
+            answer = await getAnswer(roundID);
+        } else {
+            imageVersion += 1;
+        }
+
+        guessCounter += 1;
         input = "";
 
         guessStatus[guessCounter - 1] = correct;

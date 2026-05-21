@@ -26,5 +26,4 @@ def get_anwer(round_id: str):
 
 @router.post("/guess")
 def guess(req: GuessRequest):
-    print(req)
     return check_guess(req)

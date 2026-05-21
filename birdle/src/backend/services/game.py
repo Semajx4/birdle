@@ -164,30 +164,32 @@ def check_guess(req):
     if round_state.guesses >= MAX_GUESSES:
         return {"error": "max guesses reached"}
 
-    bird = round_state.bird
-
     guess_bird = get_bird_by_id(req.guess_id)
-
     if not guess_bird:
         return {"error": "invalid bird"}
 
-    correct = guess_bird.id == bird.id
-    order = guess_bird.order == bird.order
-    family = guess_bird.family == bird.family
-    genus = guess_bird.genus == bird.genus
+    correct = guess_bird.id == round_state.bird.id
 
+    order = guess_bird.order == round_state.bird.order
+    family = guess_bird.family == round_state.bird.family
+    genus = guess_bird.genus == round_state.bird.genus
+
+    # increment FIRST, but treat it as authoritative
     round_state.guesses += 1
 
+    finished = round_state.guesses >= MAX_GUESSES
+
+    if finished:
+        round_state.finished = True
+        round_state.reveal_ready = True  # important: separate from deletion
+
     if correct:
-        del active_rounds[req.round_id]
+        round_state.won = True
 
     return GuessResponse(
             correct=correct,
-            hints=Hints(
-                order=order,
-                family=family,
-                genus=genus,
-                ),
+            hints=Hints(order=order, family=family, genus=genus),
+            finished=finished
             )
 
 
@@ -197,7 +199,7 @@ def get_answer_if_game_over(round_id: str):
     if not round_state:
         return {"error": "invalid round"}
 
-    if round_state.guesses < MAX_GUESSES:
+    if not getattr(round_state, "finished", False):
         return {"error": "Game not finished"}
 
     bird = round_state.bird
