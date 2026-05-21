@@ -26,5 +26,6 @@ dist-ssr
 *.sw?
 *.jpg
 *.mp3
+*.db
 
 .env
