@@ -148,7 +148,7 @@ def resolve_image_path(round_id: str):
 
     bird = round_state.bird
 
-    stage = min(round_state.guesses, MAX_GUESSES)
+    stage = MAX_GUESSES if round_state.won else min(round_state.guesses, MAX_GUESSES)
     blur_radius = blur_for_stage(stage)
 
     path = IMAGE_DIR / bird.image_path
@@ -182,7 +182,7 @@ def check_guess(req):
     # increment FIRST, but treat it as authoritative
     round_state.guesses += 1
 
-    finished = round_state.guesses >= MAX_GUESSES
+    finished = correct or round_state.guesses >= MAX_GUESSES
 
     if finished:
         round_state.finished = True

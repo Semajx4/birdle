@@ -108,11 +108,10 @@
         const res = await postGuess(fullGuess.guess);
 
         correct = res.correct;
+        imageVersion += 1;
 
         if (res.finished && !answer) {
             answer = await getAnswer(currentRoundID);
-        } else {
-            imageVersion += 1;
         }
 
         guessCounter += 1;
