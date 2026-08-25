@@ -24,7 +24,6 @@
         await startGame();
         await getBirds();
     });
-    export { getAudio };
 </script>
 
 <main class="container">

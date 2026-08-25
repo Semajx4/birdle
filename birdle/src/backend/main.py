@@ -15,8 +15,9 @@ app.add_middleware(
         allow_headers=["*"],
         )
 
-
 app.include_router(bird.router, prefix="/api/bird")    
 
 # Mount static files LAST so API routes take priority
+app.mount("/", StaticFiles(directory="static", html=True), name="spa")
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
