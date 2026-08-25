@@ -2,7 +2,7 @@ import random
 import uuid
 from pathlib import Path
 
-from datetime import timedelta, datetime
+from datetime import datetime
 from fastapi.responses import FileResponse, StreamingResponse
 
 from models.models import SessionLocal, BirdRecording
@@ -22,7 +22,7 @@ MAX_GUESSES = 5
 
 daily_cache = {
         "bird": None,
-        "expires_at": None,
+        "date": None,
         }
 
 active_rounds = {}
@@ -66,23 +66,28 @@ def get_birds_for_game():
 def get_all_birds():
     return [b.to_public() for b in get_birds_for_game()]
 
-def get_random_bird():
-    now = datetime.utcnow()
+def pick_bird_for_date(birds, day):
+    # Deterministic per-day pick: seed a shuffle with the date so every
+    # worker/process derives the same bird independently, without needing
+    # to share cache state.
+    shuffled = birds[:]
+    random.Random(day.isoformat()).shuffle(shuffled)
+    return shuffled[0]
 
-    # If cached and still valid
-    if (
-            daily_cache["bird"] is not None
-            and daily_cache["expires_at"] is not None
-            and now < daily_cache["expires_at"]
-            ):
+
+def get_random_bird():
+    today = datetime.utcnow().date()
+
+    # If cached for today, reuse it
+    if daily_cache["bird"] is not None and daily_cache["date"] == today:
         return daily_cache["bird"]
 
-    # Otherwise regenerate
+    # Otherwise (re)derive deterministically from the date
     birds = get_birds_for_game()
-    bird = random.choice(birds)
+    bird = pick_bird_for_date(birds, today)
 
     daily_cache["bird"] = bird
-    daily_cache["expires_at"] = now + timedelta(hours=24)
+    daily_cache["date"] = today
 
     return bird
 
