@@ -359,6 +359,17 @@ h1 {
     cursor: pointer;
 }
 
+.shareButton {
+    margin-top: 0.6rem;
+    padding: 0.4rem 1rem;
+    font-size: 1rem;
+    border: none;
+    border-radius: 6px;
+    background: #538d4e;
+    color: white;
+    cursor: pointer;
+}
+
 .blurred-image {
     transition: filter 0.3s ease;
 }

@@ -33,6 +33,8 @@
     let autoCompleteClicked = $state(false);
     let guessRows = $state(Array(MAXGUESSES).fill(null));
 
+    let shareCopied = $state(false);
+
     let currentGuess = $state<FullGuess>({
         guess: {
             round_id: "",
@@ -133,6 +135,34 @@
             checkGuess(currentGuess);
         }
     };
+
+    const buildShareText = () => {
+        const today = new Date().toISOString().slice(0, 10);
+        const score = correct ? guessCounter : "X";
+
+        const rows = guessRows
+            .filter((row) => row)
+            .map((row) => {
+                const squares = [
+                    row.hints.order,
+                    row.hints.family,
+                    row.hints.genus,
+                    row.correct,
+                ].map((hit) => (hit ? "🟩" : "⬛"));
+                return squares.join("");
+            });
+
+        return [`Birdle ${today} ${score}/${MAXGUESSES}`, "", ...rows].join(
+            "\n",
+        );
+    };
+
+    const shareResults = () => {
+        navigator.clipboard.writeText(buildShareText()).then(() => {
+            shareCopied = true;
+            setTimeout(() => (shareCopied = false), 2000);
+        });
+    };
 </script>
 
 {#if roundID}
@@ -175,10 +205,16 @@
             {/if}
         {:else if correct}
             <div>Well Done!!!</div>
+            <button class="shareButton" onclick={shareResults}>
+                {shareCopied ? "Copied!" : "Share Results"}
+            </button>
         {:else}
             <div>
                 No more guesses! The bird was {answer?.common_name}.
             </div>
+            <button class="shareButton" onclick={shareResults}>
+                {shareCopied ? "Copied!" : "Share Results"}
+            </button>
         {/if}
     </div>
 </div>
