@@ -2,11 +2,19 @@
     import AnswerText from "./AnswerText.svelte";
     import type { Bird, FullGuess } from "../types";
     import ImageHint from "./ImageHint.svelte";
-    import { postGuess, getAnswer } from "../api";
+    import { postGuess, getAnswer, start } from "../api";
+    import { MAX_GUESSES } from "../lib/constants";
+    import {
+        clearProgress,
+        saveProgress,
+        todayKey,
+        type GuessRowState,
+    } from "../lib/progress";
 
     let prop = $props();
 
-    const MAXGUESSES = 5;
+    const MAXGUESSES = MAX_GUESSES;
+    let hydrated = $state(false);
 
     let roundID = $state<string | null>(null);
     let audioPath = $state<string | null>("");
@@ -55,6 +63,36 @@
         if (prop.roundID) roundID = prop.roundID;
         if (prop.allBirds) allBirds = prop.allBirds;
         if (prop.audioPath) audioPath = prop.audioPath;
+
+        if (!hydrated && prop.initialProgress) {
+            const saved = prop.initialProgress;
+
+            guessRows = saved.guessRows;
+            guessCounter = saved.guessCounter;
+            correct = saved.correct;
+            answer = saved.answer;
+            imageVersion = saved.guessCounter;
+
+            guessStatus = guessStatus.map(
+                (_, i) => !!saved.guessRows[i]?.correct,
+            );
+
+            guessArray = saved.guessRows
+                .filter(
+                    (row: GuessRowState | null): row is GuessRowState =>
+                        row !== null,
+                )
+                .map((row: GuessRowState) => ({
+                    id: row.id,
+                    common_name: row.common_name,
+                    scientific_name: row.scientific_name,
+                    order: row.order,
+                    family: row.family,
+                    genus: row.genus,
+                }));
+
+            hydrated = true;
+        }
     });
 
     const guessMatchesBirdName = (guess: string, bird: Bird) => {
@@ -131,11 +169,43 @@
         highlightedIndex = -1;
     };
 
+    const restartRound = async () => {
+        clearProgress();
+        const fresh = await start();
+        roundID = fresh.round_id;
+
+        guessRows = Array(MAXGUESSES).fill(null);
+        guessCounter = 0;
+        correct = false;
+        answer = null;
+        guessStatus = guessStatus.map(() => false);
+        guessArray = [];
+        imageVersion = 0;
+
+        saveProgress({
+            date: todayKey(),
+            roundId: roundID,
+            guessRows,
+            guessCounter,
+            correct,
+            answer,
+        });
+    };
+
     const checkGuess = async (fullGuess: FullGuess) => {
         if (guessCounter >= MAXGUESSES || correct || !roundID) return;
         const currentRoundID = roundID;
 
-        const res = await postGuess(fullGuess.guess);
+        let res;
+        try {
+            res = await postGuess(fullGuess.guess);
+        } catch (err) {
+            // The server no longer knows this round (e.g. it restarted since
+            // we resumed it from localStorage) - start a fresh one instead
+            // of getting stuck.
+            await restartRound();
+            return;
+        }
 
         correct = res.correct;
         imageVersion += 1;
@@ -156,6 +226,15 @@
             hints: res.hints,
             correct: res.correct,
         };
+
+        saveProgress({
+            date: todayKey(),
+            roundId: currentRoundID,
+            guessRows,
+            guessCounter,
+            correct,
+            answer,
+        });
     };
 
     const submitGuess = () => {

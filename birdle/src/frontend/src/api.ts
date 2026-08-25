@@ -27,7 +27,24 @@ export async function postGuess(guess: Guess) {
         throw new Error(`Guess request failed: ${res.status}`);
     }
 
-    return await res.json();
+    const data = await res.json();
+    if (data.error) {
+        throw new Error(data.error);
+    }
+
+    return data;
+}
+
+export async function getRoundStatus(
+    round_id: string,
+): Promise<{ guesses: number; finished: boolean; won: boolean } | null> {
+    const res = await fetch(`/api/bird/status/${round_id}`);
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    if (data.error) return null;
+
+    return data;
 }
 
 export function getAudioUrl(round_id: string): string {

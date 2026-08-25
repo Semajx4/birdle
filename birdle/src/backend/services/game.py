@@ -198,6 +198,19 @@ def check_guess(req):
             )
 
 
+def get_round_status(round_id: str):
+    round_state = active_rounds.get(round_id)
+
+    if not round_state:
+        return {"error": "invalid round"}
+
+    return {
+            "guesses": round_state.guesses,
+            "finished": round_state.finished,
+            "won": round_state.won,
+            }
+
+
 def get_answer_if_game_over(round_id: str):
     round_state = active_rounds.get(round_id)
 
