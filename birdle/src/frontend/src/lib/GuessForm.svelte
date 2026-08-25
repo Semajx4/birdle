@@ -57,8 +57,8 @@
     const guessMatchesBirdName = (guess: string, bird: Bird) => {
         if (guessArray.some((g) => g.id === bird.id)) return;
         return (
-            bird.common_name.toLowerCase().includes(guess.toLowerCase()) ||
-            bird.scientific_name.toLowerCase().includes(guess.toLowerCase())
+            bird.common_name.toLowerCase().includes(guess.toLowerCase())
+
         );
     };
 
