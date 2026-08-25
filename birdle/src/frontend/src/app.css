@@ -179,7 +179,8 @@ h1 {
     text-align: left;
 }
 
-.autoCompleteRow:hover {
+.autoCompleteRow:hover,
+.autoCompleteRow.highlighted {
     background: #c2c3c5;
 }
 

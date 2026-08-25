@@ -31,6 +31,7 @@
     let guessCounter = $state(0);
     let input = $state("");
     let autoCompleteClicked = $state(false);
+    let highlightedIndex = $state(-1);
     let guessRows = $state(Array(MAXGUESSES).fill(null));
 
     let shareCopied = $state(false);
@@ -77,7 +78,8 @@
     };
 
     const handleInput = (event: KeyboardEvent) => {
-        if (event.key === "Enter") return;
+        if (["Enter", "ArrowUp", "ArrowDown", "Escape"].includes(event.key))
+            return;
         autoCompleteClicked = false;
         if (allBirds && input && input !== "") {
             possibleOptions = [];
@@ -86,6 +88,31 @@
                     possibleOptions.push(elem);
                 }
             }
+            highlightedIndex = possibleOptions.length > 0 ? 0 : -1;
+        }
+    };
+
+    const handleKeydown = (event: KeyboardEvent) => {
+        if (!possibleOptions || possibleOptions.length === 0 || autoCompleteClicked)
+            return;
+
+        if (event.key === "ArrowDown") {
+            event.preventDefault();
+            highlightedIndex = Math.min(
+                highlightedIndex + 1,
+                possibleOptions.length - 1,
+            );
+        } else if (event.key === "ArrowUp") {
+            event.preventDefault();
+            highlightedIndex = Math.max(highlightedIndex - 1, 0);
+        } else if (event.key === "Enter") {
+            if (highlightedIndex >= 0 && highlightedIndex < possibleOptions.length) {
+                event.preventDefault();
+                autoCompleteGuess(possibleOptions[highlightedIndex]);
+            }
+        } else if (event.key === "Escape") {
+            autoCompleteClicked = true;
+            highlightedIndex = -1;
         }
     };
 
@@ -101,6 +128,7 @@
         };
         input = bird.common_name;
         autoCompleteClicked = true;
+        highlightedIndex = -1;
     };
 
     const checkGuess = async (fullGuess: FullGuess) => {
@@ -189,13 +217,34 @@
                 bind:this={inputField}
                 class="guessInput"
                 onkeyup={handleInput}
+                onkeydown={handleKeydown}
                 placeholder="Name that bird..."
+                role="combobox"
+                aria-expanded={allBirds !== null &&
+                    allBirds.length > 0 &&
+                    !autoCompleteClicked}
+                aria-controls="autoCompleteListbox"
+                aria-activedescendant={highlightedIndex >= 0
+                    ? `autoCompleteOption-${highlightedIndex}`
+                    : undefined}
             />
             {#if allBirds !== null && allBirds.length > 0 && !autoCompleteClicked}
-                <div class="autoCompleteDropdown">
-                    {#each possibleOptions as possibleBird}
+                <div
+                    class="autoCompleteDropdown"
+                    id="autoCompleteListbox"
+                    role="listbox"
+                >
+                    {#each possibleOptions as possibleBird, i}
+                        <!-- svelte-ignore a11y_click_events_have_key_events -->
                         <div
-                            class="autoCompleteRow"
+                            id="autoCompleteOption-{i}"
+                            class="autoCompleteRow {i === highlightedIndex
+                                ? 'highlighted'
+                                : ''}"
+                            role="option"
+                            tabindex="-1"
+                            aria-selected={i === highlightedIndex}
+                            onmouseenter={() => (highlightedIndex = i)}
                             onclick={() => autoCompleteGuess(possibleBird)}
                         >
                             {#each highlightMatch(possibleBird.common_name, input) as segment}{#if segment.match}<b>{segment.text}</b>{:else}{segment.text}{/if}{/each} - {possibleBird.scientific_name.toLowerCase()}
