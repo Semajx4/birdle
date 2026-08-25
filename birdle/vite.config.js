@@ -7,7 +7,7 @@ export default defineConfig({
   plugins: [svelte()],
     server: {
         proxy: {
-            "/api": "http://backend:8000",
+            "/api": process.env.VITE_API_PROXY_TARGET || "http://localhost:8000",
         },
-    } 
+    }
 })
