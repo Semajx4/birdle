@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://birdle2.nz/sitemap.xml
