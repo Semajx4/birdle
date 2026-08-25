@@ -62,6 +62,18 @@
         );
     };
 
+    const highlightMatch = (name: string, query: string) => {
+        if (!query) return [{ text: name, match: false }];
+        const matchStart = name.toLowerCase().indexOf(query.toLowerCase());
+        if (matchStart === -1) return [{ text: name, match: false }];
+        const matchEnd = matchStart + query.length;
+        return [
+            { text: name.slice(0, matchStart), match: false },
+            { text: name.slice(matchStart, matchEnd), match: true },
+            { text: name.slice(matchEnd), match: false },
+        ].filter((segment) => segment.text !== "");
+    };
+
     const handleInput = (event: KeyboardEvent) => {
         if (event.key === "Enter") return;
         autoCompleteClicked = false;
@@ -76,9 +88,11 @@
     };
 
     const autoCompleteGuess = (bird: Bird) => {
+        if (!roundID) return;
+        const currentRoundID = roundID;
         currentGuess = {
             guess: {
-                round_id: roundID,
+                round_id: currentRoundID,
                 guess_id: bird.id,
             },
             bird: bird,
@@ -88,14 +102,15 @@
     };
 
     const checkGuess = async (fullGuess: FullGuess) => {
-        if (guessCounter >= MAXGUESSES || correct) return;
+        if (guessCounter >= MAXGUESSES || correct || !roundID) return;
+        const currentRoundID = roundID;
 
         const res = await postGuess(fullGuess.guess);
 
         correct = res.correct;
 
         if (res.finished && !answer) {
-            answer = await getAnswer(roundID);
+            answer = await getAnswer(currentRoundID);
         } else {
             imageVersion += 1;
         }
@@ -154,7 +169,7 @@
                             class="autoCompleteRow"
                             onclick={() => autoCompleteGuess(possibleBird)}
                         >
-                            {possibleBird.common_name} - {possibleBird.scientific_name.toLowerCase()}
+                            {#each highlightMatch(possibleBird.common_name, input) as segment}{#if segment.match}<b>{segment.text}</b>{:else}{segment.text}{/if}{/each} - {possibleBird.scientific_name.toLowerCase()}
                         </div>
                     {/each}
                 </div>
