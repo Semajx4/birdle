@@ -51,7 +51,16 @@ _SALT = _load_salt()
 
 
 def extract_client_ip(request) -> str:
-    """Best guess at the real client IP, honouring common proxy headers."""
+    """Best guess at the real client IP, honouring common proxy headers.
+
+    ``CF-Connecting-IP`` is checked first: Cloudflare (Tunnel included) sets it
+    to the real visitor IP and strips any client-supplied copy at the edge, so
+    it is trustworthy. ``X-Forwarded-For`` / ``X-Real-IP`` are only as
+    trustworthy as whatever set them.
+    """
+    cf_ip = request.headers.get("cf-connecting-ip")
+    if cf_ip:
+        return cf_ip.strip()
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
         return forwarded.split(",")[0].strip()

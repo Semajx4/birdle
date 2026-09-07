@@ -6,12 +6,19 @@ These endpoints are NOT meant to be public. They are gated two ways:
     (or ``Authorization: Bearer <token>``). If ``STATS_TOKEN`` is unset the
     whole router returns 503 — it is disabled by default.
 2.  A caller-IP allowlist. ``STATS_ALLOWED_NETWORKS`` (comma-separated CIDRs)
-    defaults to loopback + RFC1918 + the Docker bridge, so on a normal
-    deployment only something running on the same host/LAN can reach it.
+    defaults to loopback + RFC1918, so only something on the same host/LAN
+    can reach it.
 
-Note: if you sit the app behind a reverse proxy that forwards every path,
-the peer address is always the proxy, so the allowlist can't tell callers
-apart — keep the proxy from forwarding ``/internal/`` and rely on the token.
+The allowlist is evaluated against the *effective* client IP: if a
+``CF-Connecting-IP`` header is present (Cloudflare / Cloudflare Tunnel, which
+strips client-supplied copies at the edge) that real visitor IP is used, so a
+request arriving through the tunnel is judged on the visitor's public IP and
+denied. A request made directly on the host (e.g. ``curl localhost:8000``) has
+no such header and is judged on the loopback/bridge peer address, so it passes.
+
+Belt and braces: also keep your Cloudflare Tunnel ingress from routing
+``/internal/*`` at all (see ANALYTICS.md), and bind the published port to
+loopback so the only path in is the tunnel.
 """
 
 import ipaddress
@@ -21,10 +28,11 @@ from fastapi import APIRouter, Header, HTTPException, Query, Request
 from sqlalchemy import distinct, func
 
 from models.analytics import AnalyticsSession, RoundStat
+from services.analytics import extract_client_ip
 
 router = APIRouter()
 
-_DEFAULT_NETWORKS = "127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+_DEFAULT_NETWORKS = "127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7"
 
 
 def _allowed_networks():
@@ -52,11 +60,11 @@ def _check_access(request: Request, token_header, auth_header) -> None:
     if not provided or not secrets_equal(provided, expected):
         raise HTTPException(status_code=401, detail="bad or missing stats token")
 
-    peer = request.client.host if request.client else ""
     nets = _allowed_networks()
     if nets:
+        caller = extract_client_ip(request)
         try:
-            addr = ipaddress.ip_address(peer)
+            addr = ipaddress.ip_address(caller)
         except ValueError:
             raise HTTPException(status_code=403, detail="caller not in allowlist")
         if not any(addr in net for net in nets):

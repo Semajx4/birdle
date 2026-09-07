@@ -10,9 +10,16 @@ set -euo pipefail
 # Put STATS_TOKEN in a .env file next to this script (KEY=value per line); it is
 # git-ignored. The named volume "birdle-data" keeps analytics.db + the IP salt
 # across redeploys.
+#
+# BIND_ADDR - host address the container port is published on. Defaults to
+#             127.0.0.1 so the app is only reachable via the Cloudflare Tunnel
+#             (cloudflared runs on this host). Set to 0.0.0.0 to expose it on
+#             the LAN / public interfaces directly.
 
 ENV_FILE_ARG=()
 [ -f .env ] && ENV_FILE_ARG=(--env-file .env)
+
+BIND_ADDR="${BIND_ADDR:-127.0.0.1}"
 
 # Locate a GeoLite2 Country database: prefer a loose file, else the newest
 # extracted MaxMind release directory.
@@ -42,7 +49,7 @@ fi
 docker build -f Dockerfile.prod -t birdle .
 docker rm -f birdle 2>/dev/null || true
 docker run -d --restart unless-stopped \
-  -p 8000:8000 \
+  -p "${BIND_ADDR}:8000:8000" \
   -v birdle-data:/app/data \
   "${ENV_FILE_ARG[@]}" \
   "${GEOIP_ARG[@]}" \
