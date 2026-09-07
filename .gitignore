@@ -31,3 +31,6 @@ dist-ssr
 *.db
 
 .env
+
+# analytics runtime data (sqlite db + persisted IP salt)
+data/

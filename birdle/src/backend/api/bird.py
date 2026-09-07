@@ -1,12 +1,12 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from services.game import create_round, get_all_birds, check_guess, resolve_audio_path, resolve_image_path, get_answer_if_game_over, get_round_status
 from schemas import GuessRequest
 
 router = APIRouter()
 
 @router.get("/start")
-def random_bird():
-    return create_round()
+def random_bird(request: Request):
+    return create_round(request)
 
 @router.get("/audio/{round_id}")
 def read_audio(round_id: str):

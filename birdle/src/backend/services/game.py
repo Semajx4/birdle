@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 
 from models.models import SessionLocal, BirdRecording
 from schemas import GuessResponse, Hints, FullBird, RoundState
+from services.analytics import record_round_started, record_round_finished
 
 from PIL import Image, ImageFilter
 from io import BytesIO
@@ -91,12 +92,17 @@ def get_random_bird():
 
     return bird
 
-def create_round():
+def create_round(request=None):
     bird = get_random_bird()
 
     round_id = str(uuid.uuid4())
 
-    active_rounds[round_id] = RoundState(bird)        
+    active_rounds[round_id] = RoundState(bird)
+
+    if request is not None:
+        game_date = datetime.utcnow().date().isoformat()
+        record_round_started(round_id, bird.id, game_date, request)
+
     return {
             "round_id": round_id,
             }
@@ -190,6 +196,9 @@ def check_guess(req):
 
     if correct:
         round_state.won = True
+
+    if finished:
+        record_round_finished(req.round_id, round_state.guesses, round_state.won)
 
     return GuessResponse(
             correct=correct,

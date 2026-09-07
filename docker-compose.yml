@@ -18,6 +18,11 @@ services:
     environment:
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUNBUFFERED: "1"
+      # analytics / internal stats API — see birdle/src/backend/ANALYTICS.md
+      STATS_TOKEN: "${STATS_TOKEN:-dev-token}"
+      STATS_ALLOWED_NETWORKS: ""          # dev: disable the caller-IP allowlist
+      GEOIP_DB_PATH: "${GEOIP_DB_PATH:-}"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
     restart: unless-stopped
 
   frontend:

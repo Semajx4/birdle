@@ -1,8 +1,62 @@
 # birdle
 
-dev:
-`docker compose up --build`
+Listen to a bird song and guess the bird.
 
-prod:
-`docker build -f Dockerfile.prod -t birdle .`
-`docker run -d -p 8000:8000 birdle`
+## Dev
+
+```sh
+docker compose up --build
+```
+
+Frontend on http://localhost:5173, backend on http://localhost:8000.
+
+## Prod
+
+```sh
+./start.sh
+```
+
+`start.sh` builds `Dockerfile.prod` (Svelte build + FastAPI, served together on
+port 8000) and runs it as a container named `birdle` with
+`--restart unless-stopped`. It also:
+
+- mounts the named volume `birdle-data` at `/app/data` so the analytics DB and
+  the IP-hash salt survive redeploys;
+- loads a `.env` file next to `start.sh` if present (git-ignored) for config
+  such as `STATS_TOKEN` and `GEOIP_DB_PATH`.
+
+App is then on http://localhost:8000.
+
+## Analytics
+
+Per-round metrics (players, rounds finished, scores) are recorded to a separate
+SQLite DB, with **hashed** client IPs and an optional GeoIP country code. Full
+details, schema, and env vars: [`birdle/src/backend/ANALYTICS.md`](birdle/src/backend/ANALYTICS.md).
+
+Read them through the internal stats API. It is disabled until `STATS_TOKEN` is
+set, and by default only accepts callers from loopback / private networks.
+
+```sh
+# put STATS_TOKEN=... in .env next to start.sh, then:
+export STATS_TOKEN=your-token
+
+# overall totals
+curl -s -H "X-Stats-Token: $STATS_TOKEN" \
+  http://localhost:8000/internal/stats/summary | jq
+
+# per-day breakdown
+curl -s -H "X-Stats-Token: $STATS_TOKEN" \
+  http://localhost:8000/internal/stats/daily | jq
+
+# by country
+curl -s -H "X-Stats-Token: $STATS_TOKEN" \
+  http://localhost:8000/internal/stats/countries | jq
+
+# raw rows (params: limit<=1000, offset, finished=true|false, game_date=YYYY-MM-DD)
+curl -s -H "X-Stats-Token: $STATS_TOKEN" \
+  "http://localhost:8000/internal/stats/rounds?limit=20&finished=true" | jq
+```
+
+`Authorization: Bearer $STATS_TOKEN` works instead of the `X-Stats-Token` header.
+In dev (`docker compose`) the token defaults to `dev-token` and the caller-IP
+allowlist is disabled.
