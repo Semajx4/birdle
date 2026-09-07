@@ -27,10 +27,11 @@ port 8000) and runs it as a container named `birdle` with
 - if a MaxMind GeoLite2 Country database sits next to `start.sh` (loose
   `GeoLite2-Country.mmdb` or an extracted `GeoLite2-Country_YYYYMMDD/` dir),
   mounts it into the container and enables GeoIP country lookups automatically;
-- publishes the port on `127.0.0.1` only (set `BIND_ADDR=0.0.0.0` to expose it
-  directly). Public access is expected to go through a Cloudflare Tunnel
-  (`cloudflared` on the host) — see ANALYTICS.md for keeping `/internal/` off
-  the tunnel.
+- attaches the container to the `cloudflare_default` Docker network (override
+  with `NETWORK`) so the Cloudflare Tunnel reaches it as `http://birdle:8000`
+  with no published port; it also publishes on `127.0.0.1:8000` for host-local
+  access (`BIND_ADDR=0.0.0.0` to expose directly, `BIND_ADDR=""` for none).
+  See ANALYTICS.md for blocking `/internal/` at the Cloudflare edge.
 
 App is then on http://localhost:8000 (host-local).
 

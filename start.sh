@@ -11,15 +11,26 @@ set -euo pipefail
 # git-ignored. The named volume "birdle-data" keeps analytics.db + the IP salt
 # across redeploys.
 #
-# BIND_ADDR - host address the container port is published on. Defaults to
-#             127.0.0.1 so the app is only reachable via the Cloudflare Tunnel
-#             (cloudflared runs on this host). Set to 0.0.0.0 to expose it on
-#             the LAN / public interfaces directly.
+# Networking:
+#   NETWORK   - Docker network to attach to. Default "cloudflare_default" (the
+#               cloudflared compose stack) so the tunnel reaches the app as
+#               http://birdle:8000 without any published port. Set to "" to skip.
+#   BIND_ADDR - host address to also publish the port on. Default 127.0.0.1:
+#               lets you `curl localhost:8000` on the host (e.g. for the stats
+#               API) without exposing anything to the LAN / internet. Set to
+#               0.0.0.0 to expose it directly, or "" to publish nothing.
 
 ENV_FILE_ARG=()
 [ -f .env ] && ENV_FILE_ARG=(--env-file .env)
 
-BIND_ADDR="${BIND_ADDR:-127.0.0.1}"
+NETWORK="${NETWORK-cloudflare_default}"
+BIND_ADDR="${BIND_ADDR-127.0.0.1}"
+
+NETWORK_ARG=()
+[ -n "$NETWORK" ] && NETWORK_ARG=(--network "$NETWORK")
+
+PORT_ARG=()
+[ -n "$BIND_ADDR" ] && PORT_ARG=(-p "${BIND_ADDR}:8000:8000")
 
 # Locate a GeoLite2 Country database: prefer a loose file, else the newest
 # extracted MaxMind release directory.
@@ -49,7 +60,8 @@ fi
 docker build -f Dockerfile.prod -t birdle .
 docker rm -f birdle 2>/dev/null || true
 docker run -d --restart unless-stopped \
-  -p "${BIND_ADDR}:8000:8000" \
+  "${PORT_ARG[@]}" \
+  "${NETWORK_ARG[@]}" \
   -v birdle-data:/app/data \
   "${ENV_FILE_ARG[@]}" \
   "${GEOIP_ARG[@]}" \

@@ -69,34 +69,32 @@ Router mounted at `/internal/stats`. **Not for public use** — gated two ways:
 
 ### Cloudflare Tunnel deployment
 
-This app is served through a Cloudflare Tunnel (`cloudflared` on the host).
-Recommended setup so `/internal/` is genuinely unreachable from outside:
+This app is served through a Cloudflare Tunnel. `cloudflared` runs as a
+container (dashboard/token-managed tunnel), on the Docker network
+`cloudflare_default`.
 
-1. **Bind the port to loopback.** `start.sh` publishes on `127.0.0.1:8000` by
-   default (override with `BIND_ADDR`). `cloudflared`, running on the same
-   host, still reaches it; nothing on the LAN / public interface does.
-2. **Don't route `/internal/` through the tunnel.** In your tunnel config add a
-   path rule that refuses it before the catch-all:
+1. **No published port; share the tunnel's network.** `start.sh` attaches the
+   container to `$NETWORK` (default `cloudflare_default`) so the tunnel reaches
+   it as `http://birdle:8000`, and by default *also* publishes on
+   `127.0.0.1:8000` so you can `curl` the stats API from the host. Nothing is
+   exposed to the LAN / internet.
+   - In the Cloudflare Zero Trust dashboard → your tunnel → **Public
+     Hostnames**, point the birdle hostname's service at `http://birdle:8000`.
+   - `NETWORK=""` to skip, `BIND_ADDR=0.0.0.0` to expose directly,
+     `BIND_ADDR=""` to publish nothing.
 
-   ```yaml
-   ingress:
-     - hostname: birdle.example.com
-       path: ^/internal/
-       service: http_status:404
-     - hostname: birdle.example.com
-       service: http://localhost:8000
-     - service: http_status:404
-   ```
+2. **Block `/internal/` at the edge.** A token-managed tunnel has no local
+   `config.yml`, so do it in the dashboard: **Security → WAF → Custom rules**,
+   new rule `URI Path starts with "/internal/"` → **Block**. This runs before
+   the tunnel, so those paths are unreachable from the internet. (Alternative:
+   a Cloudflare Access policy scoped to that path.)
 
-   (Dashboard-managed tunnel: add a public-hostname entry for the same host
-   with path `/internal/*` pointing at an HTTP 404 / block, ordered above the
-   main one. Or protect that path with a Cloudflare Access policy.)
 3. **Read the stats from the host** — SSH in and
    `curl -H "X-Stats-Token: $STATS_TOKEN" http://localhost:8000/internal/stats/summary`,
-   or point your future local GUI at an SSH tunnel to `localhost:8000`.
+   or point a local GUI at an SSH tunnel to `localhost:8000`.
 
-With all three, `/internal/` has no public path in, the allowlist rejects any
-that slips through, and the token is the last line.
+With all three: no public path to `/internal/`, the allowlist rejects anything
+arriving with a public `CF-Connecting-IP`, and the token is the last line.
 
 ### Endpoints
 
