@@ -34,3 +34,6 @@ dist-ssr
 
 # analytics runtime data (sqlite db + persisted IP salt)
 data/
+# GeoIP database (download separately; MaxMind license)
+*.mmdb
+GeoLite2-Country_*/

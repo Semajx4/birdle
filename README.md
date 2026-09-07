@@ -22,8 +22,11 @@ port 8000) and runs it as a container named `birdle` with
 
 - mounts the named volume `birdle-data` at `/app/data` so the analytics DB and
   the IP-hash salt survive redeploys;
-- loads a `.env` file next to `start.sh` if present (git-ignored) for config
-  such as `STATS_TOKEN` and `GEOIP_DB_PATH`.
+- loads a `.env` file next to `start.sh` if present (git-ignored), e.g. for
+  `STATS_TOKEN`;
+- if a MaxMind GeoLite2 Country database sits next to `start.sh` (loose
+  `GeoLite2-Country.mmdb` or an extracted `GeoLite2-Country_YYYYMMDD/` dir),
+  mounts it into the container and enables GeoIP country lookups automatically.
 
 App is then on http://localhost:8000.
 

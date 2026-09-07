@@ -83,12 +83,14 @@ curl -H "X-Stats-Token: $STATS_TOKEN" http://localhost:8000/internal/stats/summa
 ## Deployment notes
 
 * `start.sh` mounts a named volume `birdle-data` at `/app/data` so the analytics
-  DB and IP salt survive redeploys. Put `STATS_TOKEN=...` (and optionally
-  `GEOIP_DB_PATH=/app/data/GeoLite2-Country.mmdb`) in a git-ignored `.env` file
-  next to `start.sh`.
-* For GeoIP, download the free MaxMind **GeoLite2 Country** `.mmdb`
-  (account required) and drop it in the `birdle-data` volume, then point
-  `GEOIP_DB_PATH` at it. Without it, `country` stays `NULL` and everything else
-  still works.
+  DB and IP salt survive redeploys. Put `STATS_TOKEN=...` in a git-ignored
+  `.env` file next to `start.sh`.
+* For GeoIP, download the free MaxMind **GeoLite2 Country** database (account
+  required) and put it next to `start.sh` — either the loose
+  `GeoLite2-Country.mmdb` or the extracted `GeoLite2-Country_YYYYMMDD/`
+  directory as-is. `start.sh` finds it (newest release wins), mounts it
+  read-only into the container, and sets `GEOIP_DB_PATH` automatically. Without
+  it, `country` stays `NULL` and everything else still works. (`docker compose`
+  dev: set `GEOIP_DB_PATH` yourself and add a matching volume mount.)
 * `geoip2` is in `requirements.txt`; rebuild the image after pulling this change
   (`./start.sh`, or `docker compose build backend`).
