@@ -5,8 +5,8 @@ from schemas import GuessRequest
 router = APIRouter()
 
 @router.get("/start")
-def random_bird(request: Request):
-    return create_round(request)
+def random_bird(request: Request, ref: str | None = None):
+    return create_round(request, ref)
 
 @router.get("/audio/{round_id}")
 def read_audio(round_id: str):

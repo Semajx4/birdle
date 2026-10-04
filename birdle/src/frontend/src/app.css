@@ -438,10 +438,18 @@ h1 {
 
 /* Title */
 .title {
-    font-size: 3rem;
-    letter-spacing: 0.3rem;
+    font-size: clamp(1.6rem, 9vw, 3rem);
+    letter-spacing: 0.15em;
+    white-space: nowrap;
     margin: 0;
     color: #2f5d3a;
+}
+
+.title sup {
+    font-size: 0.5em;
+    letter-spacing: 0;
+    margin-left: -0.1em;
+    margin-right: 0.1em;
 }
 
 .subtitle {
@@ -473,6 +481,77 @@ h1 {
     transform: scale(0.98);
 }
 
+/* Splash: how to play */
+.splash-logo {
+    width: 56px;
+    height: 56px;
+    margin-bottom: 8px;
+}
+
+.how-to {
+    margin-top: 24px;
+    text-align: left;
+    color: #2f3b31;
+}
+
+.how-to h2 {
+    margin: 0 0 8px;
+    font-size: 1.1rem;
+    color: #2f5d3a;
+}
+
+.how-to ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.how-to li {
+    margin: 6px 0;
+}
+
+.how-to .hit {
+    color: #2e7d32;
+    font-weight: 600;
+}
+
+.example {
+    margin: 14px 0 0;
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: #121213;
+    color: rgba(255, 255, 255, 0.87);
+}
+
+.example .hit {
+    color: #6abf63;
+}
+
+.example .miss {
+    color: #f87171;
+    font-weight: 600;
+}
+
+.example-caption {
+    margin: 0;
+    font-size: 0.85rem;
+}
+
+.example-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1rem;
+    margin: 4px 0;
+    font-style: italic;
+    font-size: 0.9rem;
+}
+
+.rules {
+    margin: 10px 0 0;
+    font-size: 0.9rem;
+    color: #556b58;
+}
+
 /* Hint */
 .hint {
     margin-top: 14px;
@@ -488,7 +567,7 @@ h1 {
     }
 
     .title {
-        font-size: 4rem;
+        font-size: 3.4rem;
     }
 
     .subtitle {

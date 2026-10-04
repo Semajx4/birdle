@@ -20,6 +20,10 @@
 
     let allBirds = $state<Array<Bird>>([]);
 
+    // Show the splash/how-to page first, unless there's already a game in
+    // progress for today - then go straight back to it.
+    let started = $state(loadProgress() !== null);
+
     const startGame = async () => {
         const saved = loadProgress();
 
@@ -52,41 +56,70 @@
         allBirds = await getAllBirds();
     };
 
-    onMount(async () => {
+    // The round is only created once the player presses Play, so page views
+    // that never get past the splash don't show up as started rounds.
+    const play = async () => {
+        started = true;
         await startGame();
+    };
+
+    onMount(async () => {
+        if (started) await startGame();
         await getBirds();
     });
 </script>
 
 <main class="container">
-    <div id="splash" class="splash" style="display: {'none'}">
-        <div class="splash-card">
-            <div class="title-area">
-                <h1 class="title">BIRDLE</h1>
-                <p class="subtitle">
-                    Listen to the bird song and guess the bird
-                </p>
+    {#if !started}
+        <div class="splash">
+            <div class="splash-card">
+                <div class="title-area">
+                    <img class="splash-logo" src="/bird.svg" alt="" />
+                    <h1 class="title" aria-label="birdle2.nz">BIRDLE<sup>2</sup>.NZ</h1>
+                    <p class="subtitle">
+                        Listen to the bird song and guess the bird
+                    </p>
+                </div>
+
+                <section class="how-to" aria-labelledby="how-to-heading">
+                    <h2 id="how-to-heading">How to play</h2>
+                    <ul>
+                        <li>Listen to a mystery New Zealand bird</li>
+                        <li>Guess it in {MAX_GUESSES} tries</li>
+                        <li><span class="hit">Green</span> hints mean you're getting close</li>
+                    </ul>
+
+                    <div class="example" aria-label="Example guess">
+                        <p class="example-caption">
+                            Answer <b>Tui</b>, you guess <b>Bellbird</b>:
+                        </p>
+                        <div class="example-row">
+                            <span class="hit">Passeriformes</span>
+                            <span class="hit">Meliphagidae</span>
+                            <span class="miss">Anthornis</span>
+                        </div>
+                        <p class="example-caption">Same order and family. Close!</p>
+                    </div>
+
+                    <p class="rules">New bird every day.</p>
+                </section>
+
+                <button class="start-button" onclick={play}>Play</button>
+
+                <p class="hint">Best played with sound on 🔊</p>
+            </div>
+        </div>
+    {:else}
+        <div id="game">
+            <div class="card">
+                <AudioSnippet roundID={round} />
             </div>
 
-            <div class="illustration">
-                <!-- optional: background image or decorative birds -->
+            <div class="card">
+                <GuessForm roundID={round} {allBirds} {audioPath} {initialProgress} />
             </div>
-
-            <!-- <button onclick={() => (started = true)}>Play</button> -->
-
-            <p class="hint">Best played with sound on 🔊</p>
         </div>
-    </div>
-
-    <div id="game" hidden={!true}>
-        <div class="card">
-            <AudioSnippet roundID={round} />
-        </div>
-
-        <div class="card">
-            <GuessForm roundID={round} {allBirds} {audioPath} {initialProgress} />
-        </div>
-    </div>
+    {/if}
 </main>
 
 <style>

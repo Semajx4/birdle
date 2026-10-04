@@ -2,6 +2,7 @@
     import AnswerText from "./AnswerText.svelte";
     import type { Bird, FullGuess } from "../types";
     import ImageHint from "./ImageHint.svelte";
+    import NextBirdCountdown from "./NextBirdCountdown.svelte";
     import { postGuess, getAnswer, start } from "../api";
     import { MAX_GUESSES } from "../lib/constants";
     import {
@@ -244,7 +245,7 @@
     };
 
     const buildShareText = () => {
-        const today = new Date().toISOString().slice(0, 10);
+        const today = todayKey();
         const score = correct ? guessCounter : "X";
 
         const rows = guessRows
@@ -336,6 +337,7 @@
             <button class="shareButton" onclick={shareResults}>
                 {shareCopied ? "Copied!" : "Share Results"}
             </button>
+            <NextBirdCountdown />
         {:else}
             <div>
                 No more guesses! The bird was {answer?.common_name}.
@@ -343,6 +345,7 @@
             <button class="shareButton" onclick={shareResults}>
                 {shareCopied ? "Copied!" : "Share Results"}
             </button>
+            <NextBirdCountdown />
         {/if}
     </div>
 </div>

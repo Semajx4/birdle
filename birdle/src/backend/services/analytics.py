@@ -19,6 +19,7 @@ import os
 import secrets
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from models.analytics import AnalyticsSession, RoundStat
 
@@ -116,9 +117,30 @@ def lookup_country(ip: str):
 
 
 # --------------------------------------------------------------------------- #
+# Referrer
+# --------------------------------------------------------------------------- #
+def normalize_referrer(referrer):
+    """Reduce a ``document.referrer`` URL to its host (e.g. ``www.google.com``).
+
+    Only the host is kept: it's enough to tell search from social from direct,
+    and the full URL can carry other sites' paths/query strings we don't want.
+    Returns ``None`` for empty/unparseable values (direct visits).
+    """
+    if not referrer:
+        return None
+    try:
+        host = urlsplit(referrer.strip()).hostname
+    except ValueError:
+        return None
+    return host[:255] if host else None
+
+
+# --------------------------------------------------------------------------- #
 # Public recording helpers
 # --------------------------------------------------------------------------- #
-def record_round_started(round_id: str, bird_id: str, game_date: str, request) -> None:
+def record_round_started(
+    round_id: str, bird_id: str, game_date: str, request, referrer=None
+) -> None:
     try:
         ip = extract_client_ip(request)
         row = RoundStat(
@@ -128,6 +150,7 @@ def record_round_started(round_id: str, bird_id: str, game_date: str, request) -
             ip_hash=hash_ip(ip),
             country=lookup_country(ip),
             user_agent=(request.headers.get("user-agent") or "")[:500],
+            referrer=normalize_referrer(referrer),
             guesses=0,
             won=False,
             finished=False,
@@ -140,11 +163,28 @@ def record_round_started(round_id: str, bird_id: str, game_date: str, request) -
         finally:
             session.close()
         logger.info(
-            "round_started round_id=%s game_date=%s bird_id=%s country=%s",
-            round_id, game_date, bird_id, row.country,
+            "round_started round_id=%s game_date=%s bird_id=%s country=%s referrer=%s",
+            round_id, game_date, bird_id, row.country, row.referrer,
         )
     except Exception:
         logger.exception("failed to record round_started for %s", round_id)
+
+
+def record_guess(round_id: str, guesses: int) -> None:
+    """Record progress on an unfinished round, so abandoned rounds show how
+    far the player got rather than always reading 0."""
+    try:
+        session = AnalyticsSession()
+        try:
+            row = session.get(RoundStat, round_id)
+            if row is None:
+                return
+            row.guesses = guesses
+            session.commit()
+        finally:
+            session.close()
+    except Exception:
+        logger.exception("failed to record guess for %s", round_id)
 
 
 def record_round_finished(round_id: str, guesses: int, won: bool) -> None:

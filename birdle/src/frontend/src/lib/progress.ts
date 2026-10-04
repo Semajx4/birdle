@@ -16,10 +16,39 @@ export type Progress = {
 
 const STORAGE_KEY = "birdle:progress";
 
-// The backend picks the daily bird off datetime.utcnow().date(), so the
-// resume check has to use the same UTC day boundary.
+// The backend rolls the daily bird over at midnight New Zealand time
+// (GAME_TZ in services/game.py), so the resume check and share text have to
+// use the same day boundary, whatever the player's own time zone.
+const GAME_TZ = "Pacific/Auckland";
+
 export function todayKey(): string {
-    return new Date().toISOString().slice(0, 10);
+    const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: GAME_TZ,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+    }).formatToParts(new Date());
+    const get = (type: string) => parts.find((p) => p.type === type)?.value;
+    return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+// Milliseconds until the next bird (midnight New Zealand time). Worked out
+// from the NZ wall clock, so it can be an hour out in the few hours after
+// midnight on the two daylight-saving changeover days - fine for a countdown.
+export function msUntilNextBird(now: Date = new Date()): number {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone: GAME_TZ,
+        hourCycle: "h23",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+    }).formatToParts(now);
+    const get = (type: string) =>
+        Number(parts.find((p) => p.type === type)?.value ?? 0);
+    const elapsed =
+        (get("hour") * 3600 + get("minute") * 60 + get("second")) * 1000 +
+        now.getMilliseconds();
+    return 24 * 3600 * 1000 - elapsed;
 }
 
 export function loadProgress(): Progress | null {

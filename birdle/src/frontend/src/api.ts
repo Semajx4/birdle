@@ -2,7 +2,9 @@
 import type { Bird , Guess} from "./types";
 
 export async function start() {
-    const res = await fetch("/api/bird/start");
+    // Pass along where the visitor came from (the backend keeps only the host)
+    const params = new URLSearchParams({ ref: document.referrer });
+    const res = await fetch(`/api/bird/start?${params}`);
         if (!res.ok) throw new Error("Failed to fetch round data");
     return await res.json();
 }

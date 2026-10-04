@@ -8,12 +8,13 @@ never mixed with `birds.db`). Table `round_stats`:
 | column        | meaning                                                        |
 |---------------|---------------------------------------------------------------|
 | `round_id`    | UUID of the round (primary key)                               |
-| `game_date`   | UTC date of the puzzle the round belongs to                   |
+| `game_date`   | NZ date (Pacific/Auckland) of the puzzle; UTC before 2026-10  |
 | `bird_id`     | the answer bird                                               |
 | `ip_hash`     | salted SHA-256 of the client IP — **never the raw IP**        |
 | `country`     | ISO country code from GeoIP, or `NULL` if lookup disabled     |
 | `user_agent`  | request User-Agent (truncated to 500 chars)                   |
-| `guesses`     | number of guesses made (final, when finished)                 |
+| `referrer`    | host of `document.referrer` (e.g. `www.google.com`), `NULL` = direct |
+| `guesses`     | guesses made so far — updated on every guess, final once finished |
 | `won`         | did the player get it                                         |
 | `finished`    | did the round reach an end (win or 5 guesses)                 |
 | `started_at`  | UTC timestamp the round was created                           |

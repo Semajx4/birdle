@@ -3,11 +3,12 @@ import uuid
 from pathlib import Path
 
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from fastapi.responses import FileResponse, StreamingResponse
 
 from models.models import SessionLocal, BirdRecording
 from schemas import GuessResponse, Hints, FullBird, RoundState
-from services.analytics import record_round_started, record_round_finished
+from services.analytics import record_round_started, record_round_finished, record_guess
 
 from PIL import Image, ImageFilter
 from io import BytesIO
@@ -76,8 +77,17 @@ def pick_bird_for_date(birds, day):
     return shuffled[0]
 
 
+# The daily bird rolls over at midnight New Zealand time. The frontend's
+# todayKey() (lib/progress.ts) must use the same zone.
+GAME_TZ = ZoneInfo("Pacific/Auckland")
+
+
+def game_today():
+    return datetime.now(GAME_TZ).date()
+
+
 def get_random_bird():
-    today = datetime.utcnow().date()
+    today = game_today()
 
     # If cached for today, reuse it
     if daily_cache["bird"] is not None and daily_cache["date"] == today:
@@ -92,7 +102,7 @@ def get_random_bird():
 
     return bird
 
-def create_round(request=None):
+def create_round(request=None, referrer=None):
     bird = get_random_bird()
 
     round_id = str(uuid.uuid4())
@@ -100,8 +110,8 @@ def create_round(request=None):
     active_rounds[round_id] = RoundState(bird)
 
     if request is not None:
-        game_date = datetime.utcnow().date().isoformat()
-        record_round_started(round_id, bird.id, game_date, request)
+        game_date = game_today().isoformat()
+        record_round_started(round_id, bird.id, game_date, request, referrer)
 
     return {
             "round_id": round_id,
@@ -199,6 +209,8 @@ def check_guess(req):
 
     if finished:
         record_round_finished(req.round_id, round_state.guesses, round_state.won)
+    else:
+        record_guess(req.round_id, round_state.guesses)
 
     return GuessResponse(
             correct=correct,

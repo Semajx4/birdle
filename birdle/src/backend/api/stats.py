@@ -221,6 +221,7 @@ def rounds(
                 "ip_hash": r.ip_hash,
                 "country": r.country,
                 "user_agent": r.user_agent,
+                "referrer": r.referrer,
                 "guesses": r.guesses,
                 "won": r.won,
                 "finished": r.finished,
