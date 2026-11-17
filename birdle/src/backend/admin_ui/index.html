@@ -77,6 +77,10 @@
   .nav button:disabled { opacity: .35; cursor: default; }
   .range-label { color: var(--text-2); min-width: 150px; text-align: center; font-variant-numeric: tabular-nums; }
 
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin: -8px 0 20px; }
+  .tabs button { border: 0; background: none; font: inherit; color: var(--text-2); padding: 8px 12px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tabs button:hover { color: var(--text); }
+  .tabs button[aria-selected="true"] { color: var(--text); font-weight: 600; border-bottom-color: var(--accent); }
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
   .card h2 { font-size: 14px; margin: 0 0 2px; font-weight: 650; }
   .card .sub { color: var(--text-3); font-size: 12.5px; margin: 0 0 12px; }
@@ -187,7 +191,7 @@
 <div class="wrap">
   <header>
     <h1>Birdle <span>admin · stats</span></h1>
-    <div class="controls">
+    <div class="controls" id="rangeControls">
       <div class="seg" role="group" aria-label="Range">
         <button data-mode="week" aria-pressed="true">Week</button>
         <button data-mode="30d" aria-pressed="false">30 days</button>
@@ -200,6 +204,11 @@
       </div>
     </div>
   </header>
+
+  <nav class="tabs" role="tablist" aria-label="Admin sections">
+    <button role="tab" id="tab-stats" data-tab="stats" aria-selected="true" aria-controls="main">Stats</button>
+    <button role="tab" id="tab-upcoming" data-tab="upcoming" aria-selected="false" aria-controls="upcomingPanel">Upcoming birds</button>
+  </nav>
 
   <div id="banner"></div>
 
@@ -215,12 +224,6 @@
         <span><i style="background:var(--unfinished)"></i>Unfinished</span>
       </div>
       <div class="chart" id="chart"></div>
-    </section>
-
-    <section class="card">
-      <h2>Upcoming birds</h2>
-      <p class="sub">The next 14 daily picks. These assume the bird list doesn't change: adding or removing a bird reshuffles every day.</p>
-      <div class="table-wrap"><table id="upcomingTable"></table></div>
     </section>
 
     <section class="card">
@@ -241,6 +244,14 @@
       <div class="card"><h2>Referrers</h2><p class="sub">Rounds (players)</p><div id="bdReferrers"></div></div>
     </section>
   </main>
+
+  <section id="upcomingPanel" hidden>
+    <section class="card">
+      <h2>Upcoming birds</h2>
+      <p class="sub">The next 14 daily picks. These assume the bird list doesn't change: adding or removing a bird reshuffles every day.</p>
+      <div class="table-wrap"><table id="upcomingTable"></table></div>
+    </section>
+  </section>
 
   <footer id="footer"></footer>
 </div>
@@ -621,13 +632,13 @@
     load();
   });
   document.addEventListener("keydown", (e) => {
-    if (e.target.closest("input, textarea")) return;
+    if (e.target.closest("input, textarea") || $("#main").hidden) return;
     if (e.key === "ArrowLeft" && !$("#prev").disabled) $("#prev").click();
     if (e.key === "ArrowRight" && !$("#next").disabled) $("#next").click();
   });
 
   // ---------- load ----------
-  let seq = 0, lastDays = [], lastRange = null, upcomingLoaded = false;
+  let seq = 0, lastDays = [], lastRange = null;
   async function load() {
     const my = ++seq;
     syncControls();
@@ -653,7 +664,6 @@
       renderBreakdown($("#bdCountries"), bd.countries);
       renderBreakdown($("#bdDevices"), bd.devices);
       renderBreakdown($("#bdReferrers"), bd.referrers);
-      if (!upcomingLoaded) { upcomingLoaded = true; loadUpcoming(); }
       $("#footer").textContent = `Dates are NZ game days (Mon–Sun weeks). Loaded ${new Date().toLocaleTimeString("en-NZ", { timeZone: TZ, hour: "2-digit", minute: "2-digit" })} NZ.`;
     } catch (e) {
       if (my !== seq) return;
@@ -679,6 +689,8 @@
           <td class="hide-sm">${r.last_picked ? esc(dayLabel(r.last_picked, { day: "numeric", month: "short" })) : '<span class="muted">—</span>'}</td>
           <td class="num">${rateCell(r.all_time_wins, r.all_time_finished)}</td></tr>`).join("")}</tbody>`;
     } catch (e) {
+      upcomingLoaded = false;   // retry next time the tab is opened
+      if (e instanceof AuthError) showBanner(e.message);
       t.innerHTML = `<tbody><tr><td class="empty">Couldn't load upcoming birds (${esc(e.message)}).</td></tr></tbody>`;
     }
   }
@@ -743,6 +755,26 @@
     }
   }
 
+  // ---------- tabs ----------
+  let upcomingLoaded = false;
+  function showTab(name) {
+    const stats = name !== "upcoming";
+    document.querySelectorAll(".tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === (stats ? "stats" : "upcoming"))));
+    $("#main").hidden = !stats;
+    $("#upcomingPanel").hidden = stats;
+    $("#rangeControls").style.visibility = stats ? "" : "hidden";
+    $("#footer").hidden = !stats;
+    $("#tip").style.display = "none";
+    if (stats && lastRange) renderChart(lastDays, lastRange);   // width may have changed while hidden
+    if (!stats && !upcomingLoaded) { upcomingLoaded = true; loadUpcoming(); }
+  }
+  document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => {
+    history.replaceState(null, "", b.dataset.tab === "stats" ? location.pathname + location.search : "#upcoming");
+    showTab(b.dataset.tab);
+  }));
+  window.addEventListener("hashchange", () => showTab(location.hash === "#upcoming" ? "upcoming" : "stats"));
+
+  showTab(location.hash === "#upcoming" ? "upcoming" : "stats");
   load();
 })();
 </script>
