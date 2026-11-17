@@ -60,9 +60,11 @@ fi
 docker build -f Dockerfile.prod -t birdle .
 docker rm -f birdle 2>/dev/null || true
 docker run -d --restart unless-stopped \
-  "${PORT_ARG[@]}" \
-  "${NETWORK_ARG[@]}" \
-  -v birdle-data:/app/data \
-  "${ENV_FILE_ARG[@]}" \
-  "${GEOIP_ARG[@]}" \
-  --name birdle birdle
+    --label com.docker.compose.project=birdle \
+    --label com.docker.compose.service=birdle \
+    "${PORT_ARG[@]}" \
+    "${NETWORK_ARG[@]}" \
+    -v birdle-data:/app/data \
+    "${ENV_FILE_ARG[@]}" \
+    "${GEOIP_ARG[@]}" \
+    --name birdle birdle
