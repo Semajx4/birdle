@@ -1,0 +1,712 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Birdle Admin · Stats</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f6f6f4;
+    --surface: #fcfcfb;
+    --border: #e4e3de;
+    --grid: #ebeae6;
+    --text: #0b0b0b;
+    --text-2: #52514e;
+    --text-3: #7a7974;
+    --accent: #2a78d6;
+    --hover: #f0efeb;
+    --won: #2a78d6;
+    --lost: #eb6834;
+    --unfinished: #c4c3bc;
+    --bar: #86b6ef;
+    --flag-bg: #fdf0e0;
+    --flag-text: #8a4b00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #121211;
+      --surface: #1a1a19;
+      --border: #2e2e2c;
+      --grid: #282826;
+      --text: #f0efec;
+      --text-2: #c3c2b7;
+      --text-3: #8f8e86;
+      --accent: #5598e7;
+      --hover: #232321;
+      --won: #3987e5;
+      --lost: #d95926;
+      --unfinished: #55544f;
+      --bar: #256abf;
+      --flag-bg: #3a2a12;
+      --flag-text: #f2c27a;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #121211; --surface: #1a1a19; --border: #2e2e2c; --grid: #282826;
+    --text: #f0efec; --text-2: #c3c2b7; --text-3: #8f8e86; --accent: #5598e7;
+    --hover: #232321; --won: #3987e5; --lost: #d95926; --unfinished: #55544f;
+    --bar: #256abf; --flag-bg: #3a2a12; --flag-text: #f2c27a;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 20px 16px 48px; }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin-bottom: 20px; }
+  header h1 { font-size: 18px; margin: 0; font-weight: 650; letter-spacing: -0.01em; }
+  header h1 span { color: var(--text-3); font-weight: 500; }
+  .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+  .seg button { border: 0; background: none; color: var(--text-2); padding: 6px 12px; font: inherit; cursor: pointer; }
+  .seg button + button { border-left: 1px solid var(--border); }
+  .seg button[aria-pressed="true"] { background: var(--hover); color: var(--text); font-weight: 600; }
+  .nav { display: inline-flex; align-items: center; gap: 4px; }
+  .nav button { border: 1px solid var(--border); background: var(--surface); color: var(--text-2); width: 30px; height: 30px; border-radius: 8px; cursor: pointer; font: inherit; }
+  .nav button:disabled { opacity: .35; cursor: default; }
+  .range-label { color: var(--text-2); min-width: 150px; text-align: center; font-variant-numeric: tabular-nums; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  .card h2 { font-size: 14px; margin: 0 0 2px; font-weight: 650; }
+  .card .sub { color: var(--text-3); font-size: 12.5px; margin: 0 0 12px; }
+
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .tile { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+  .tile .label { color: var(--text-2); font-size: 12.5px; }
+  .tile .value { font-size: 24px; font-weight: 650; margin-top: 2px; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+  .tile .detail { color: var(--text-3); font-size: 12px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; color: var(--text-2); font-size: 12.5px; margin-bottom: 8px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+  .chart { position: relative; }
+  .chart svg { display: block; width: 100%; height: 220px; overflow: visible; }
+  .chart .axis text { fill: var(--text-3); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .chart .grid line { stroke: var(--grid); stroke-width: 1; }
+  .chart .hit { fill: transparent; cursor: pointer; }
+  .chart .hit:hover { fill: var(--hover); }
+  .tip {
+    position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; font-size: 12.5px; box-shadow: 0 4px 16px rgba(0,0,0,.12);
+    white-space: nowrap; z-index: 5; display: none;
+  }
+  .tip b { display: block; margin-bottom: 2px; }
+  .tip .row { display: flex; gap: 8px; align-items: center; color: var(--text-2); }
+  .tip .row i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+  .tip .row span:last-child { margin-left: auto; color: var(--text); font-variant-numeric: tabular-nums; padding-left: 12px; }
+
+  .table-wrap { overflow-x: auto; margin: 0 -16px; padding: 0 16px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+  th { color: var(--text-3); font-weight: 500; font-size: 12px; white-space: nowrap; }
+  th.num, td.num { text-align: right; }
+  th.sortable { cursor: pointer; user-select: none; }
+  th.sortable:hover { color: var(--text); }
+  th[aria-sort="ascending"]::after { content: " ↑"; }
+  th[aria-sort="descending"]::after { content: " ↓"; }
+  tbody tr.day { cursor: pointer; }
+  tbody tr.day:hover, tbody tr.day[aria-expanded="true"] { background: var(--hover); }
+  td .sci { color: var(--text-3); font-style: italic; font-size: 12.5px; }
+  td .muted, .muted { color: var(--text-3); }
+  .caret { display: inline-block; width: 12px; color: var(--text-3); transition: transform .15s; }
+  tr[aria-expanded="true"] .caret { transform: rotate(90deg); }
+  tr.detail > td { background: var(--bg); padding: 4px 10px 12px 32px; }
+  tr.detail table th, tr.detail table td { padding: 5px 8px; font-size: 12.5px; }
+  .pill { display: inline-block; padding: 1px 7px; border-radius: 99px; font-size: 11.5px; font-weight: 600; }
+  .pill.won { background: color-mix(in srgb, var(--won) 18%, transparent); color: var(--text); }
+  .pill.lost { background: color-mix(in srgb, var(--lost) 20%, transparent); color: var(--text); }
+  .pill.unfinished { background: var(--hover); color: var(--text-2); font-weight: 500; }
+  .flag { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 4px; font-size: 11px; background: var(--flag-bg); color: var(--flag-text); font-style: normal; }
+  .rate { display: inline-flex; align-items: center; gap: 8px; justify-content: flex-end; }
+  .rate .meter { width: 48px; height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--won) 18%, transparent); overflow: hidden; }
+  .rate .meter b { display: block; height: 100%; background: var(--won); border-radius: 3px; }
+
+  .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .grid3 .card { margin-bottom: 0; }
+  .hbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; align-items: center; font-size: 13px; }
+  .hbar .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+  .hbar .n { color: var(--text-2); font-variant-numeric: tabular-nums; text-align: right; font-size: 12.5px; }
+  .hbar .track { grid-column: 1 / -1; height: 6px; margin-bottom: 8px; }
+  .hbar .track b { display: block; height: 100%; background: var(--bar); border-radius: 0 3px 3px 0; min-width: 2px; }
+
+  .banner { border: 1px solid var(--border); background: var(--surface); border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; }
+  .banner input { font: inherit; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); width: 280px; max-width: 100%; }
+  .banner button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--hover); color: var(--text); cursor: pointer; }
+  .birdlink { all: unset; cursor: pointer; color: var(--text); border-bottom: 1px dotted var(--text-3); }
+  .birdlink:hover { color: var(--accent); border-bottom-color: var(--accent); }
+  .birdlink:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+  tr.today-row td { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+
+  dialog.bird {
+    width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0;
+    border: 1px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--text);
+    box-shadow: 0 12px 48px rgba(0,0,0,.25);
+  }
+  dialog.bird::backdrop { background: rgba(0,0,0,.45); }
+  .bird-head { display: flex; align-items: flex-start; gap: 12px; padding: 16px 16px 8px; }
+  .bird-head h3 { margin: 0; font-size: 18px; font-weight: 650; }
+  .bird-head .sci { color: var(--text-3); font-style: italic; }
+  .bird-head .close { margin-left: auto; border: 1px solid var(--border); background: var(--bg); color: var(--text-2); width: 30px; height: 30px; border-radius: 8px; cursor: pointer; font: inherit; flex: none; }
+  .bird-body { padding: 0 16px 16px; }
+  .bird-img { width: 100%; max-height: 340px; object-fit: contain; background: var(--bg); border-radius: 10px; display: block; }
+  .bird-noimg { padding: 40px 0; text-align: center; color: var(--text-3); background: var(--bg); border-radius: 10px; }
+  .bird-body audio { width: 100%; margin: 12px 0 4px; }
+  .facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 12px 0 0; font-size: 13px; }
+  .facts dt { color: var(--text-3); }
+  .facts dd { margin: 0; }
+  .bird-body h4 { font-size: 13px; margin: 16px 0 6px; font-weight: 650; }
+  .bird-body table th, .bird-body table td { padding: 5px 8px; font-size: 12.5px; }
+
+  .empty { color: var(--text-3); padding: 12px 0; }
+  .loading { opacity: .55; transition: opacity .15s; }
+  footer { color: var(--text-3); font-size: 12px; margin-top: 24px; }
+  @media (max-width: 640px) {
+    .controls { margin-left: 0; width: 100%; }
+    .range-label { min-width: 0; flex: 1; }
+    .hide-sm { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Birdle <span>admin · stats</span></h1>
+    <div class="controls">
+      <div class="seg" role="group" aria-label="Range">
+        <button data-mode="week" aria-pressed="true">Week</button>
+        <button data-mode="30d" aria-pressed="false">30 days</button>
+        <button data-mode="all" aria-pressed="false">All time</button>
+      </div>
+      <div class="nav">
+        <button id="prev" aria-label="Previous period">‹</button>
+        <span class="range-label" id="rangeLabel"></span>
+        <button id="next" aria-label="Next period">›</button>
+      </div>
+    </div>
+  </header>
+
+  <div id="banner"></div>
+
+  <main id="main">
+    <section class="tiles" id="tiles" aria-label="Summary"></section>
+
+    <section class="card">
+      <h2>Rounds per day</h2>
+      <p class="sub">Stacked by outcome. Hover a day for details, click it to open that day below.</p>
+      <div class="legend">
+        <span><i style="background:var(--won)"></i>Won</span>
+        <span><i style="background:var(--lost)"></i>Lost</span>
+        <span><i style="background:var(--unfinished)"></i>Unfinished</span>
+      </div>
+      <div class="chart" id="chart"></div>
+    </section>
+
+    <section class="card">
+      <h2>Upcoming birds</h2>
+      <p class="sub">The next 14 daily picks. These assume the bird list doesn't change: adding or removing a bird reshuffles every day.</p>
+      <div class="table-wrap"><table id="upcomingTable"></table></div>
+    </section>
+
+    <section class="card">
+      <h2>Daily round history</h2>
+      <p class="sub">Click a day to see its individual rounds.</p>
+      <div class="table-wrap"><table id="dailyTable"></table></div>
+    </section>
+
+    <section class="card">
+      <h2>Bird difficulty</h2>
+      <p class="sub" id="birdSub">Every bird that was the daily pick in this range. Click a column to sort.</p>
+      <div class="table-wrap"><table id="birdTable"></table></div>
+    </section>
+
+    <section class="grid3">
+      <div class="card"><h2>Countries</h2><p class="sub">Rounds (players)</p><div id="bdCountries"></div></div>
+      <div class="card"><h2>Devices</h2><p class="sub">Rounds (players)</p><div id="bdDevices"></div></div>
+      <div class="card"><h2>Referrers</h2><p class="sub">Rounds (players)</p><div id="bdReferrers"></div></div>
+    </section>
+  </main>
+
+  <footer id="footer"></footer>
+</div>
+
+<div class="tip" id="tip"></div>
+
+<dialog class="bird" id="birdDialog" aria-labelledby="birdTitle">
+  <div class="bird-head">
+    <div><h3 id="birdTitle"></h3><div class="sci" id="birdSci"></div></div>
+    <button class="close" id="birdClose" aria-label="Close">✕</button>
+  </div>
+  <div class="bird-body" id="birdBody"></div>
+</dialog>
+
+<script>
+(() => {
+  "use strict";
+
+  const API = "/internal/stats";
+  const TZ = "Pacific/Auckland";
+  const TOKEN_KEY = "birdle-stats-token";
+
+  // ---------- helpers ----------
+  const $ = (s) => document.querySelector(s);
+  const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const fmtInt = (n) => (n ?? 0).toLocaleString("en-NZ");
+  const pct = (x) => (x == null ? "—" : Math.round(x * 100) + "%");
+  const num = (x, d = 2) => (x == null ? "—" : Number(x).toFixed(d));
+
+  const nzToday = () => new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date());
+  const toDate = (s) => new Date(s + "T00:00:00Z");
+  const toStr = (d) => d.toISOString().slice(0, 10);
+  const addDays = (s, n) => { const d = toDate(s); d.setUTCDate(d.getUTCDate() + n); return toStr(d); };
+  const mondayOf = (s) => { const d = toDate(s); const dow = (d.getUTCDay() + 6) % 7; return addDays(s, -dow); };
+  const dayLabel = (s, opts = { weekday: "short", day: "numeric", month: "short" }) =>
+    toDate(s).toLocaleDateString("en-NZ", { ...opts, timeZone: "UTC" });
+  const daysBetween = (a, b) => Math.round((toDate(b) - toDate(a)) / 86400000);
+  // Stored timestamps are naive UTC.
+  const nzTime = (iso) => iso ? new Date(iso + (/[zZ]|[+-]\d\d:\d\d$/.test(iso) ? "" : "Z"))
+    .toLocaleString("en-NZ", { timeZone: TZ, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }) : "—";
+  const duration = (a, b) => {
+    if (!a || !b) return "—";
+    const s = Math.round((new Date(b + "Z") - new Date(a + "Z")) / 1000);
+    if (s < 0) return "—";
+    return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s`;
+  };
+
+  // ---------- state ----------
+  const today = nzToday();
+  const state = { mode: "week", anchor: mondayOf(today), birdSort: { key: "win_rate", dir: "asc" }, birds: [] };
+
+  function currentRange() {
+    if (state.mode === "week") {
+      const start = state.anchor, end = addDays(start, 6);
+      return { start, end, prev: { start: addDays(start, -7), end: addDays(start, -1) }, label: `${dayLabel(start, { day: "numeric", month: "short" })} – ${dayLabel(end, { day: "numeric", month: "short", year: "numeric" })}`, compare: "previous week" };
+    }
+    if (state.mode === "30d") {
+      const end = state.anchor, start = addDays(end, -29);
+      return { start, end, prev: { start: addDays(start, -30), end: addDays(start, -1) }, label: `${dayLabel(start, { day: "numeric", month: "short" })} – ${dayLabel(end, { day: "numeric", month: "short", year: "numeric" })}`, compare: "previous 30 days" };
+    }
+    return { start: null, end: null, prev: null, label: "All time", compare: null };
+  }
+
+  // ---------- API ----------
+  class AuthError extends Error {}
+  async function api(path, params = {}) {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v != null && v !== ""));
+    const headers = {};
+    let token = null;
+    try { token = sessionStorage.getItem(TOKEN_KEY); } catch {}
+    if (token) headers["X-Stats-Token"] = token;
+    const base = path.startsWith("/internal/") ? "" : API;
+    const res = await fetch(`${base}${path}${qs.toString() ? "?" + qs : ""}`, { headers, credentials: "same-origin", redirect: "manual" });
+    // Cloudflare Access answers an expired session with a redirect to its login page.
+    if (res.type === "opaqueredirect" || res.status === 0) throw new AuthError("expired");
+    if (res.status === 401) throw new AuthError("token");
+    if (!res.ok) throw new Error(`${path}: HTTP ${res.status}`);
+    return res.json();
+  }
+
+  function showBanner(kind) {
+    const b = $("#banner");
+    if (kind === "expired") {
+      b.innerHTML = `<div class="banner">Your Cloudflare Access session has expired. <button id="reload">Reload to sign in again</button></div>`;
+      $("#reload").onclick = () => location.reload();
+    } else if (kind === "token") {
+      b.innerHTML = `<form class="banner" id="tokenForm">Not coming through Cloudflare Access, so a stats token is needed (local use only).<br><br>
+        <input type="password" id="tokenInput" placeholder="STATS_TOKEN" autocomplete="off"> <button>Use token</button></form>`;
+      $("#tokenForm").onsubmit = (e) => { e.preventDefault(); try { sessionStorage.setItem(TOKEN_KEY, $("#tokenInput").value.trim()); } catch {} b.innerHTML = ""; load(); };
+    } else if (kind) {
+      b.innerHTML = `<div class="banner">Couldn't load stats: ${esc(kind)}</div>`;
+    } else {
+      b.innerHTML = "";
+    }
+  }
+
+  // ---------- rendering ----------
+  function delta(cur, prev, fmt = (v) => fmtInt(v), isPct = false) {
+    if (prev == null || cur == null) return "";
+    const d = cur - prev;
+    const shown = isPct ? `${d >= 0 ? "+" : "−"}${Math.abs(Math.round(d * 100))} pts` : `${d >= 0 ? "+" : "−"}${fmt(Math.abs(d))}`;
+    return `${d === 0 ? "±0" : shown}`;
+  }
+
+  function renderTiles(s, p, range) {
+    const vs = range.compare ? ` vs ${range.compare}` : "";
+    const finishedPct = s.total_rounds ? s.finished_rounds / s.total_rounds : null;
+    const prevFinishedPct = p && p.total_rounds ? p.finished_rounds / p.total_rounds : null;
+    const tiles = [
+      { label: "Rounds started", value: fmtInt(s.total_rounds), detail: p ? `${delta(s.total_rounds, p.total_rounds)}${vs}` : `${fmtInt(s.unfinished_rounds)} unfinished` },
+      { label: "Distinct players", value: fmtInt(s.distinct_players), detail: p ? `${delta(s.distinct_players, p.distinct_players)}${vs}` : "by hashed IP" },
+      { label: "Finished", value: pct(finishedPct), detail: `${fmtInt(s.finished_rounds)} of ${fmtInt(s.total_rounds)}${p && prevFinishedPct != null && finishedPct != null ? ` · ${delta(finishedPct, prevFinishedPct, null, true)}` : ""}` },
+      { label: "Win rate", value: pct(s.win_rate), detail: `${fmtInt(s.wins)} won · ${fmtInt(s.losses)} lost${p && p.win_rate != null && s.win_rate != null ? ` · ${delta(s.win_rate, p.win_rate, null, true)}` : ""}` },
+      { label: "Avg guesses (finished)", value: num(s.avg_guesses_when_finished), detail: `wins only: ${num(s.avg_guesses_when_won)}` },
+    ];
+    $("#tiles").innerHTML = tiles.map((t) => `<div class="tile"><div class="label">${esc(t.label)}</div><div class="value">${esc(t.value)}</div><div class="detail">${esc(t.detail)}</div></div>`).join("");
+  }
+
+  function niceMax(v) {
+    if (v <= 4) return 4;
+    const step = v <= 10 ? 2 : v <= 25 ? 5 : v <= 50 ? 10 : Math.pow(10, Math.floor(Math.log10(v)));
+    return Math.ceil(v / step) * step;
+  }
+
+  function renderChart(days, range) {
+    const el = $("#chart");
+    // Fill gaps so every day in the range has a column (zero days included).
+    const byDate = Object.fromEntries(days.map((d) => [d.game_date, d]));
+    let start = range.start, end = range.end;
+    if (!start) {
+      const dates = days.map((d) => d.game_date).sort();
+      if (!dates.length) { el.innerHTML = `<div class="empty">No rounds yet.</div>`; return; }
+      start = dates[0]; end = dates[dates.length - 1];
+    }
+    if (end > today) end = today;
+    const list = [];
+    for (let s = start; s <= end; s = addDays(s, 1)) list.push(byDate[s] || { game_date: s, rounds: 0, finished: 0, wins: 0 });
+    if (!list.length) { el.innerHTML = `<div class="empty">No days in this range yet.</div>`; return; }
+
+    const W = Math.max(el.clientWidth, 280), H = 220, padL = 28, padR = 4, padT = 8, padB = 24;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    const max = niceMax(Math.max(1, ...list.map((d) => d.rounds)));
+    const band = plotW / list.length;
+    const barW = Math.max(2, Math.min(24, band * 0.7));
+    const y = (v) => padT + plotH - (v / max) * plotH;
+    const GAP = 2;
+    const ticks = [0, max / 2, max].filter((v, i, a) => Number.isInteger(v) && a.indexOf(v) === i);
+
+    // Label every Nth day so labels never collide.
+    const labelEvery = Math.max(1, Math.ceil(list.length / Math.floor(plotW / 44)));
+    let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Rounds per day, stacked by outcome">`;
+    svg += `<g class="grid">${ticks.map((t) => `<line x1="${padL}" x2="${W - padR}" y1="${y(t)}" y2="${y(t)}"/>`).join("")}</g>`;
+    svg += `<g class="axis">${ticks.map((t) => `<text x="${padL - 6}" y="${y(t) + 4}" text-anchor="end">${t}</text>`).join("")}</g>`;
+    svg += `<g class="axis">`;
+    list.forEach((d, i) => {
+      if (i % labelEvery) return;
+      const cx = padL + band * i + band / 2;
+      const lab = list.length <= 7 ? dayLabel(d.game_date, { weekday: "short", day: "numeric" }) : dayLabel(d.game_date, { day: "numeric", month: "short" });
+      svg += `<text x="${cx}" y="${H - 6}" text-anchor="middle">${esc(lab)}</text>`;
+    });
+    svg += `</g>`;
+
+    list.forEach((d, i) => {
+      const cx = padL + band * i + band / 2, x = cx - barW / 2;
+      const lost = d.finished - d.wins, unf = d.rounds - d.finished;
+      const segs = [["won", d.wins], ["lost", lost], ["unfinished", unf]].filter(([, v]) => v > 0);
+      let base = 0;
+      segs.forEach(([k, v], si) => {
+        const top = si === segs.length - 1;
+        const y0 = y(base), y1 = y(base + v);
+        const h = Math.max(1, y0 - y1 - (si > 0 ? GAP : 0));
+        const yy = y1;
+        const r = top ? Math.min(4, barW / 2, h) : 0;
+        // Rounded data-end on the top segment only; square at the baseline.
+        svg += top && r > 0
+          ? `<path fill="var(--${k})" d="M${x},${yy + h} V${yy + r} Q${x},${yy} ${x + r},${yy} H${x + barW - r} Q${x + barW},${yy} ${x + barW},${yy + r} V${yy + h} Z"/>`
+          : `<rect fill="var(--${k})" x="${x}" y="${yy}" width="${barW}" height="${h}"/>`;
+        base += v;
+      });
+      svg += `<rect class="hit" data-i="${i}" x="${padL + band * i}" y="${padT}" width="${band}" height="${plotH}" rx="4"/>`;
+    });
+    svg += `</svg>`;
+    el.innerHTML = svg;
+
+    const tip = $("#tip");
+    el.querySelectorAll(".hit").forEach((h) => {
+      const d = list[+h.dataset.i];
+      h.addEventListener("mousemove", (e) => {
+        const lost = d.finished - d.wins, unf = d.rounds - d.finished;
+        tip.innerHTML = `<b>${esc(dayLabel(d.game_date, { weekday: "long", day: "numeric", month: "short" }))}</b>
+          ${d.common_name ? `<div class="muted" style="margin-bottom:4px">${esc(d.common_name)}</div>` : ""}
+          <div class="row"><i style="background:var(--won)"></i><span>Won</span><span>${d.wins}</span></div>
+          <div class="row"><i style="background:var(--lost)"></i><span>Lost</span><span>${lost}</span></div>
+          <div class="row"><i style="background:var(--unfinished)"></i><span>Unfinished</span><span>${unf}</span></div>
+          <div class="row" style="margin-top:2px"><i></i><span>Rounds</span><span>${d.rounds}</span></div>`;
+        tip.style.display = "block";
+        const tw = tip.offsetWidth, th = tip.offsetHeight;
+        let left = e.pageX + 14, top = e.pageY - th - 10;
+        if (left + tw > window.scrollX + document.documentElement.clientWidth - 8) left = e.pageX - tw - 14;
+        if (top < window.scrollY + 8) top = e.pageY + 14;
+        tip.style.left = left + "px"; tip.style.top = top + "px";
+      });
+      h.addEventListener("mouseleave", () => (tip.style.display = "none"));
+      h.addEventListener("click", () => {
+        const row = document.querySelector(`tr.day[data-date="${d.game_date}"]`);
+        if (row) { if (row.getAttribute("aria-expanded") !== "true") row.click(); row.scrollIntoView({ behavior: "smooth", block: "center" }); }
+      });
+    });
+  }
+
+  function birdCell(d) {
+    if (!d.common_name) return `<span class="muted">bird ${esc(d.bird_id ?? "?")}</span>`;
+    const away = d.country && d.country !== "New Zealand" ? `<i class="flag" title="${esc(d.location || "")}">${esc(d.country)}</i>` : "";
+    return `<button type="button" class="birdlink" data-bird="${esc(d.bird_id)}" title="Show photo and recording">${esc(d.common_name)}</button>${away}<br><span class="sci">${esc(d.scientific_name || "")}</span>`;
+  }
+
+  function rateCell(wins, finished) {
+    if (!finished) return `<span class="muted">—</span>`;
+    const r = wins / finished;
+    return `<span class="rate"><span class="meter" aria-hidden="true"><b style="width:${Math.round(r * 100)}%"></b></span>${pct(r)}</span>`;
+  }
+
+  function renderDaily(days) {
+    const t = $("#dailyTable");
+    if (!days.length) { t.innerHTML = `<tbody><tr><td class="empty">No rounds in this range.</td></tr></tbody>`; return; }
+    t.innerHTML = `<thead><tr><th>Date</th><th>Bird</th><th class="num">Rounds</th><th class="num hide-sm">Players</th><th class="num">Finished</th><th class="num">Wins</th><th class="num">Win rate</th></tr></thead>
+      <tbody>${days.map((d) => `<tr class="day" data-date="${esc(d.game_date)}" aria-expanded="false" tabindex="0">
+        <td style="white-space:nowrap"><span class="caret">›</span> ${esc(dayLabel(d.game_date))}${d.game_date === today ? ' <span class="muted">(today)</span>' : ""}</td>
+        <td>${birdCell(d)}</td>
+        <td class="num">${d.rounds}</td><td class="num hide-sm">${d.players}</td><td class="num">${d.finished}</td><td class="num">${d.wins}</td>
+        <td class="num">${rateCell(d.wins, d.finished)}</td></tr>`).join("")}</tbody>`;
+    t.querySelectorAll("tr.day").forEach((tr) => {
+      const toggle = () => toggleDay(tr);
+      // Clicks/keys on the bird name open the bird panel instead.
+      tr.addEventListener("click", (e) => { if (!e.target.closest(".birdlink")) toggle(); });
+      tr.addEventListener("keydown", (e) => {
+        if (e.target.closest(".birdlink")) return;
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); }
+      });
+    });
+  }
+
+  async function toggleDay(tr) {
+    const open = tr.getAttribute("aria-expanded") === "true";
+    const next = tr.nextElementSibling;
+    if (open) { tr.setAttribute("aria-expanded", "false"); if (next && next.classList.contains("detail")) next.remove(); return; }
+    tr.setAttribute("aria-expanded", "true");
+    const detail = document.createElement("tr");
+    detail.className = "detail";
+    detail.innerHTML = `<td colspan="7"><span class="muted">Loading rounds…</span></td>`;
+    tr.after(detail);
+    try {
+      const rounds = await api("/rounds", { game_date: tr.dataset.date, limit: 1000 });
+      rounds.sort((a, b) => (a.started_at || "").localeCompare(b.started_at || ""));
+      detail.firstElementChild.innerHTML = rounds.length ? `<table>
+        <thead><tr><th>Started (NZ)</th><th>Result</th><th class="num">Guesses</th><th class="num hide-sm">Time</th><th>Country</th><th>Device</th><th class="hide-sm">Referrer</th><th class="hide-sm">Player</th></tr></thead>
+        <tbody>${rounds.map((r) => {
+          const res = r.won ? "won" : r.finished ? "lost" : "unfinished";
+          return `<tr><td style="white-space:nowrap">${esc(nzTime(r.started_at))}</td>
+            <td><span class="pill ${res}">${res === "won" ? "Won" : res === "lost" ? "Lost" : "Unfinished"}</span></td>
+            <td class="num">${r.finished ? r.guesses : '<span class="muted">—</span>'}</td>
+            <td class="num hide-sm">${esc(duration(r.started_at, r.finished_at))}</td>
+            <td>${esc(r.country || "—")}</td><td>${esc(r.device)}</td>
+            <td class="hide-sm">${esc(r.referrer || "direct")}</td>
+            <td class="hide-sm muted" title="Hashed IP">${esc((r.ip_hash || "").slice(0, 8))}</td></tr>`;
+        }).join("")}</tbody></table>` : `<span class="muted">No rounds.</span>`;
+    } catch (e) {
+      detail.firstElementChild.innerHTML = `<span class="muted">Couldn't load rounds (${esc(e.message)}).</span>`;
+    }
+  }
+
+  const BIRD_COLS = [
+    { key: "common_name", label: "Bird", cls: "" },
+    { key: "last", label: "Last picked", cls: "" },
+    { key: "times", label: "Days", cls: "num" },
+    { key: "rounds", label: "Rounds", cls: "num hide-sm" },
+    { key: "finished", label: "Finished", cls: "num" },
+    { key: "wins", label: "Wins", cls: "num" },
+    { key: "win_rate", label: "Win rate", cls: "num" },
+    { key: "avg_guesses_when_finished", label: "Avg guesses", cls: "num hide-sm" },
+    { key: "location", label: "Recorded at", cls: "hide-sm" },
+  ];
+
+  function renderBirds() {
+    const t = $("#birdTable");
+    const rows = state.birds.map((b) => ({ ...b, last: b.dates[0] || "", times: b.dates.length }));
+    if (!rows.length) { t.innerHTML = `<tbody><tr><td class="empty">No birds in this range.</td></tr></tbody>`; return; }
+    const { key, dir } = state.birdSort;
+    const sign = dir === "asc" ? 1 : -1;
+    rows.sort((a, b) => {
+      const va = a[key], vb = b[key];
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;            // unknowns always last
+      if (vb == null) return -1;
+      const c = typeof va === "string" ? va.localeCompare(vb) : va - vb;
+      return c * sign || (b.finished - a.finished);
+    });
+    t.innerHTML = `<thead><tr>${BIRD_COLS.map((c) => `<th class="sortable ${c.cls}" data-key="${c.key}" ${c.key === key ? `aria-sort="${dir === "asc" ? "ascending" : "descending"}"` : ""}>${c.label}</th>`).join("")}</tr></thead>
+      <tbody>${rows.map((b) => `<tr>
+        <td>${birdCell(b)}</td>
+        <td style="white-space:nowrap" title="${esc(b.dates.join(", "))}">${esc(dayLabel(b.last, { day: "numeric", month: "short" }))}</td>
+        <td class="num">${b.times}</td><td class="num hide-sm">${b.rounds}</td><td class="num">${b.finished}</td><td class="num">${b.wins}</td>
+        <td class="num">${rateCell(b.wins, b.finished)}</td>
+        <td class="num hide-sm">${num(b.avg_guesses_when_finished)}</td>
+        <td class="hide-sm muted" style="font-size:12.5px">${esc(b.location || "—")}</td></tr>`).join("")}</tbody>`;
+    t.querySelectorAll("th.sortable").forEach((th) => th.addEventListener("click", () => {
+      const k = th.dataset.key;
+      const cur = state.birdSort;
+      // Same column flips direction; a new column starts at its natural order
+      // (hardest-first for win rate, A–Z for names, biggest-first otherwise).
+      state.birdSort = cur.key === k
+        ? { key: k, dir: cur.dir === "asc" ? "desc" : "asc" }
+        : { key: k, dir: k === "win_rate" || k === "common_name" ? "asc" : "desc" };
+      renderBirds();
+    }));
+  }
+
+  function renderBreakdown(el, items, limit = 8) {
+    if (!items.length) { el.innerHTML = `<div class="empty">No data.</div>`; return; }
+    let list = items.slice(0, limit);
+    if (items.length > limit) {
+      const rest = items.slice(limit);
+      list = list.concat([{ key: `Other (${rest.length})`, rounds: rest.reduce((a, b) => a + b.rounds, 0), players: rest.reduce((a, b) => a + b.players, 0) }]);
+    }
+    const max = Math.max(...list.map((i) => i.rounds));
+    el.innerHTML = `<div class="hbar">${list.map((i) => `<span class="name" title="${esc(i.key)}">${esc(i.key)}</span><span class="n">${i.rounds} <span class="muted">(${i.players})</span></span>
+      <span class="track"><b style="width:${(i.rounds / max) * 100}%"></b></span>`).join("")}</div>`;
+  }
+
+  // ---------- controls ----------
+  function syncControls() {
+    const r = currentRange();
+    $("#rangeLabel").textContent = r.label;
+    document.querySelectorAll(".seg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === state.mode)));
+    const isAll = state.mode === "all";
+    $("#prev").disabled = isAll;
+    $("#next").disabled = isAll || (state.mode === "week" ? state.anchor >= mondayOf(today) : state.anchor >= today);
+    $("#birdSub").textContent = isAll ? "Every bird that has been the daily pick. Click a column to sort." : "Every bird that was the daily pick in this range (totals cover this range only). Click a column to sort.";
+  }
+
+  document.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => {
+    state.mode = b.dataset.mode;
+    state.anchor = state.mode === "week" ? mondayOf(today) : today;
+    load();
+  }));
+  $("#prev").addEventListener("click", () => { state.anchor = addDays(state.anchor, state.mode === "week" ? -7 : -30); load(); });
+  $("#next").addEventListener("click", () => {
+    const step = state.mode === "week" ? 7 : 30;
+    const cap = state.mode === "week" ? mondayOf(today) : today;
+    state.anchor = addDays(state.anchor, step) > cap ? cap : addDays(state.anchor, step);
+    load();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.target.closest("input, textarea")) return;
+    if (e.key === "ArrowLeft" && !$("#prev").disabled) $("#prev").click();
+    if (e.key === "ArrowRight" && !$("#next").disabled) $("#next").click();
+  });
+
+  // ---------- load ----------
+  let seq = 0, lastDays = [], lastRange = null, upcomingLoaded = false;
+  async function load() {
+    const my = ++seq;
+    syncControls();
+    const range = currentRange();
+    const p = { start: range.start, end: range.end };
+    $("#main").classList.add("loading");
+    try {
+      const [summary, prev, days, birds, bd] = await Promise.all([
+        api("/summary", p),
+        range.prev ? api("/summary", range.prev) : Promise.resolve(null),
+        api("/daily", p),
+        api("/birds", p),
+        api("/breakdowns", p),
+      ]);
+      if (my !== seq) return;
+      showBanner(null);
+      renderTiles(summary, prev, range);
+      lastDays = days; lastRange = range;
+      renderChart(days, range);
+      renderDaily(days);
+      state.birds = birds;
+      renderBirds();
+      renderBreakdown($("#bdCountries"), bd.countries);
+      renderBreakdown($("#bdDevices"), bd.devices);
+      renderBreakdown($("#bdReferrers"), bd.referrers);
+      if (!upcomingLoaded) { upcomingLoaded = true; loadUpcoming(); }
+      $("#footer").textContent = `Dates are NZ game days (Mon–Sun weeks). Loaded ${new Date().toLocaleTimeString("en-NZ", { timeZone: TZ, hour: "2-digit", minute: "2-digit" })} NZ.`;
+    } catch (e) {
+      if (my !== seq) return;
+      showBanner(e instanceof AuthError ? e.message : e.message || String(e));
+    } finally {
+      if (my === seq) $("#main").classList.remove("loading");
+    }
+  }
+
+  let rt;
+  window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => lastRange && renderChart(lastDays, lastRange), 150); });
+
+  // ---------- upcoming birds ----------
+  async function loadUpcoming() {
+    const t = $("#upcomingTable");
+    try {
+      const rows = await api("/internal/admin/api/upcoming", { days: 14 });
+      t.innerHTML = `<thead><tr><th>Date</th><th>Bird</th><th class="num">Picked before</th><th class="hide-sm">Last picked</th><th class="num">All-time win rate</th></tr></thead>
+        <tbody>${rows.map((r) => `<tr class="${r.date === today ? "today-row" : ""}">
+          <td style="white-space:nowrap">${esc(dayLabel(r.date))}${r.date === today ? ' <span class="muted">(today)</span>' : ""}</td>
+          <td>${birdCell(r)}</td>
+          <td class="num">${r.times_picked_before || '<span class="muted">new</span>'}</td>
+          <td class="hide-sm">${r.last_picked ? esc(dayLabel(r.last_picked, { day: "numeric", month: "short" })) : '<span class="muted">—</span>'}</td>
+          <td class="num">${rateCell(r.all_time_wins, r.all_time_finished)}</td></tr>`).join("")}</tbody>`;
+    } catch (e) {
+      t.innerHTML = `<tbody><tr><td class="empty">Couldn't load upcoming birds (${esc(e.message)}).</td></tr></tbody>`;
+    }
+  }
+
+  // ---------- bird panel ----------
+  const dlg = $("#birdDialog");
+  $("#birdClose").addEventListener("click", () => dlg.close());
+  dlg.addEventListener("click", (e) => { if (e.target === dlg) dlg.close(); });   // backdrop click
+  dlg.addEventListener("close", () => { const a = dlg.querySelector("audio"); if (a) a.pause(); });
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest(".birdlink");
+    if (b) { e.preventDefault(); openBird(b.dataset.bird); }
+  });
+
+  let birdSeq = 0;
+  async function openBird(id) {
+    const my = ++birdSeq;
+    $("#birdTitle").textContent = "Loading…";
+    $("#birdSci").textContent = "";
+    $("#birdBody").innerHTML = "";
+    if (!dlg.open) dlg.showModal();
+    let b;
+    try {
+      b = await api(`/internal/admin/api/bird/${encodeURIComponent(id)}`);
+    } catch (e) {
+      if (my !== birdSeq) return;
+      $("#birdTitle").textContent = "Couldn't load bird";
+      $("#birdBody").innerHTML = `<p class="muted">${esc(e.message)}</p>`;
+      return;
+    }
+    if (my !== birdSeq) return;
+    const media = `/internal/admin/api/bird/${encodeURIComponent(b.bird_id)}`;
+    $("#birdTitle").textContent = b.common_name || `Bird ${b.bird_id}`;
+    $("#birdSci").textContent = b.scientific_name || "";
+    const h = b.history;
+    const facts = [
+      ["Family", b.family], ["Order", b.order],
+      ["Recorded at", b.location], ["Recorded on", b.recorded_on],
+      ["Quality", b.quality], ["Recording ID", b.bird_id],
+      ["eBird code", b.ebird_species_code],
+    ].filter(([, v]) => v);
+    $("#birdBody").innerHTML = `
+      ${b.has_image ? `<img class="bird-img" src="${media}/image" alt="${esc(b.common_name || "")}">` : `<div class="bird-noimg">No image</div>`}
+      ${b.has_audio ? `<audio controls preload="metadata" src="${media}/audio"></audio>` : `<p class="muted">No recording.</p>`}
+      <dl class="facts">${facts.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>
+      <h4>Play history</h4>
+      ${h && h.dates.length ? `
+        <p class="muted" style="margin:0 0 6px;font-size:12.5px">${h.rounds} rounds · ${h.finished} finished · ${h.wins} won${h.win_rate != null ? ` (${pct(h.win_rate)})` : ""}${h.avg_guesses_when_finished != null ? ` · avg ${num(h.avg_guesses_when_finished)} guesses` : ""}</p>
+        <div class="table-wrap"><table id="birdDays"><tbody><tr><td class="muted">Loading days…</td></tr></tbody></table></div>`
+        : `<p class="muted" style="margin:0">Never been the daily bird.</p>`}`;
+    if (h && h.dates.length) {
+      // Per-day numbers come from /daily, filtered to this bird's dates.
+      try {
+        const days = await api("/daily", { start: h.dates[h.dates.length - 1], end: h.dates[0] });
+        if (my !== birdSeq) return;
+        const mine = days.filter((d) => String(d.bird_id) === String(b.bird_id));
+        $("#birdDays").innerHTML = `<thead><tr><th>Date</th><th class="num">Rounds</th><th class="num">Finished</th><th class="num">Wins</th><th class="num">Win rate</th></tr></thead>
+          <tbody>${mine.map((d) => `<tr><td>${esc(dayLabel(d.game_date))}</td><td class="num">${d.rounds}</td><td class="num">${d.finished}</td><td class="num">${d.wins}</td><td class="num">${rateCell(d.wins, d.finished)}</td></tr>`).join("")}</tbody>`;
+      } catch {
+        if (my === birdSeq) $("#birdDays").innerHTML = `<tbody><tr><td class="muted">Couldn't load days.</td></tr></tbody>`;
+      }
+    }
+  }
+
+  load();
+})();
+</script>
+</body>
+</html>

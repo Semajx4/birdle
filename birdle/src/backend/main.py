@@ -9,7 +9,7 @@ from util.logging_config import configure_logging
 
 configure_logging()
 
-from api import bird, stats
+from api import admin, bird, stats
 
 app = FastAPI()
 
@@ -41,6 +41,8 @@ async def log_requests(request: Request, call_next):
 
 app.include_router(bird.router, prefix="/api/bird")
 app.include_router(stats.router, prefix="/internal/stats")
+app.include_router(admin.api_router, prefix="/internal/admin/api")
+app.include_router(admin.router, prefix="/internal/admin")
 
 # Mount static files LAST so API routes take priority
 app.mount("/", StaticFiles(directory="static", html=True), name="spa")
