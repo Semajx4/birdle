@@ -97,6 +97,31 @@ container (dashboard/token-managed tunnel), on the Docker network
 With all three: no public path to `/internal/`, the allowlist rejects anything
 arriving with a public `CF-Connecting-IP`, and the token is the last line.
 
+### Admin hostname (Cloudflare Access)
+
+`admin.birdle2.nz` is a second tunnel public hostname pointing at the same
+`http://birdle:8000`, protected by a Cloudflare Access application
+("Birdle Admin", email policy). Through it, `/internal/*` is reachable from a
+browser after logging in.
+
+- Any request arriving via Cloudflare (`CF-Connecting-IP` or
+  `Cf-Access-Jwt-Assertion` present) is only served `/internal/*` when the
+  `Host` is `ADMIN_HOSTNAME` **and** the `Cf-Access-Jwt-Assertion` JWT
+  verifies (`services/cf_access.py`): RS256 signature against
+  `https://$CF_ACCESS_TEAM_DOMAIN/cdn-cgi/access/certs`, `aud` =
+  `CF_ACCESS_AUD`, `iss` = team domain, not expired, and optionally `email` in
+  `CF_ACCESS_ALLOWED_EMAILS`. Other hosts get 404; a missing/bad token gets 403.
+- Local requests (no Cloudflare headers) still use `STATS_TOKEN` + the IP
+  allowlist.
+- The WAF `/internal/` block rule (step 2 above) must be scoped to the public
+  hostname only (`Hostname equals "birdle2.nz"` AND path starts with
+  `/internal/`), otherwise it also blocks the admin hostname.
+- Prefer an email-only Access policy on the admin app: a Bypass policy issues
+  no JWT, so bypassed requests would be refused here.
+
+Settings live in `.env`: `ADMIN_HOSTNAME`, `CF_ACCESS_TEAM_DOMAIN`,
+`CF_ACCESS_AUD`, optional `CF_ACCESS_ALLOWED_EMAILS`.
+
 ### Endpoints
 
 | method & path                | returns                                              |

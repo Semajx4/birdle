@@ -1,6 +1,13 @@
 """Internal analytics API.
 
-These endpoints are NOT meant to be public. They are gated two ways:
+These endpoints are NOT meant to be public.
+
+Requests that arrive through Cloudflare (``CF-Connecting-IP`` or a
+``Cf-Access-Jwt-Assertion`` header present) are only served on
+``ADMIN_HOSTNAME`` (e.g. admin.birdle2.nz) and only with a valid Cloudflare
+Access JWT (see services/cf_access.py); anything else via Cloudflare gets 404.
+
+Direct/local requests are gated two ways:
 
 1.  A shared secret. Set ``STATS_TOKEN`` and send it as ``X-Stats-Token``
     (or ``Authorization: Bearer <token>``). If ``STATS_TOKEN`` is unset the
@@ -25,9 +32,10 @@ import ipaddress
 import os
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request
-from sqlalchemy import distinct, func
+from sqlalchemy import Integer, cast, distinct, func
 
 from models.analytics import AnalyticsSession, RoundStat
+from services import cf_access
 from services.analytics import extract_client_ip
 
 router = APIRouter()
@@ -49,7 +57,30 @@ def _allowed_networks():
     return nets
 
 
+def _host(request: Request) -> str:
+    host = (request.headers.get("host") or "").strip().lower()
+    if host.startswith("["):  # IPv6 literal, e.g. [::1]:8000
+        return host.split("]")[0] + "]"
+    return host.split(":")[0]
+
+
 def _check_access(request: Request, token_header, auth_header) -> None:
+    # Path 1: arrived via Cloudflare (tunnel). Only the admin hostname may reach
+    # /internal, and only with a valid Cloudflare Access token. Everything else
+    # through Cloudflare gets a plain 404 so the routes don't advertise
+    # themselves on the public site.
+    if request.headers.get("cf-connecting-ip") or request.headers.get(cf_access.HEADER):
+        admin_host = (os.environ.get("ADMIN_HOSTNAME") or "").strip().lower()
+        if not admin_host or _host(request) != admin_host or not cf_access.is_configured():
+            raise HTTPException(status_code=404, detail="Not Found")
+        try:
+            cf_access.verify_request(request)
+        except cf_access.AccessDenied as exc:
+            raise HTTPException(status_code=403, detail=str(exc))
+        return
+
+    # Path 2: direct/local call (e.g. `curl localhost:8000` on the host):
+    # shared token + caller-IP allowlist.
     expected = os.environ.get("STATS_TOKEN")
     if not expected:
         raise HTTPException(status_code=503, detail="stats API disabled (STATS_TOKEN unset)")
@@ -144,8 +175,8 @@ def daily(
                 RoundStat.game_date,
                 func.count(RoundStat.round_id),
                 func.count(distinct(RoundStat.ip_hash)),
-                func.sum(RoundStat.finished),
-                func.sum(RoundStat.won),
+                func.sum(cast(RoundStat.finished, Integer)),
+                func.sum(cast(RoundStat.won, Integer)),
             )
             .group_by(RoundStat.game_date)
             .order_by(RoundStat.game_date.desc())
