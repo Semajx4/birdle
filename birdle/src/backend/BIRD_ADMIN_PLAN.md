@@ -1,6 +1,9 @@
 # Bird management — plan & notes
 
-Status: **not started** (notes written 2026-11-02). This file collects the
+Status: **in progress.** Stats page, upcoming picks and the `enabled` flag are
+done. Steps 1–3 below were done on 2026-11-18 as a PostgreSQL migration (see
+*Database* at the end). The editor (step 4) is next. Notes were first written
+on 2026-11-02. This file collects the
 context needed to pick the work back up.
 
 ## Goals
@@ -213,3 +216,35 @@ birds without hand-disabling them all. Options:
   `daily_bird_repeats` notes / step 2 above).
 - Either way, pin past days: store each day's picked bird_id once it has
   been served, so later list edits can never rewrite history or today.
+
+
+## Database (done 2026-11-18)
+
+Steps 1–3 were done together by moving to PostgreSQL:
+
+- `docker-compose.prod.yml` runs `birdle`, `birdle-db` (postgres:17-alpine,
+  volume `birdle-pg`) and `birdle-db-backup` (nightly `pg_dump` into
+  `./backups`, 30 days kept). `start.sh` wraps `docker compose up -d --build`
+  and generates `POSTGRES_PASSWORD` in `.env`.
+- Tables (`models/models.py`, `models/analytics.py`):
+  - `birds`: one row per bird. `id` is still the old recording id (the
+    frontend and analytics use it). It also has `enabled`, `pick_order`
+    (the fixed shuffle position, taken from the old rowid order so the
+    schedule didn't change) and `notes`.
+  - `media`: many rows per bird, `kind` audio/image, with `filename`,
+    `source`/`source_ref`/`credit`/`licence`, recording details and
+    `enabled`/`position`. The primary media is the first enabled one by
+    (position, id).
+  - `daily_picks`: the bird and media actually served each day. A day is
+    pinned the first time it's played, and past days were backfilled from
+    analytics. Edits can no longer change today's bird or rewrite history.
+  - `round_stats`: analytics, as before.
+- Media files are on the `birdle-media` volume (`MEDIA_ROOT=/app/datasets`),
+  which was seeded from the image the first time. The copy baked into the
+  image only matters for that first seed.
+- `services/game.invalidate_bird_cache()` must be called after any
+  bird/media edit.
+- Dev: with no `DATABASE_URL` the app uses SQLite `data/birdle.db` and seeds
+  its birds from the committed legacy `birds.db` when the table is empty.
+- The legacy `birds.db` and `util/` fetcher scripts still target the old
+  table. Rework the fetchers when adding birds by xeno-canto ID (phase 3).

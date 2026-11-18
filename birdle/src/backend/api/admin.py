@@ -14,8 +14,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, RedirectResponse
 
 from api.stats import _check_access, birds as bird_stats, came_via_cloudflare, require_access
-from models.models import BirdRecording, SessionLocal
-from services.game import AUDIO_DIR, IMAGE_DIR, game_today, get_birds_for_game, pick_bird_for_date
+from sqlalchemy.orm import selectinload
+
+from models.models import Bird, DailyPick, SessionLocal
+from services.game import AUDIO_DIR, IMAGE_DIR, bird_for_date, game_today
 
 
 def page_access(request: Request) -> None:
@@ -57,15 +59,20 @@ def _history_by_bird() -> dict:
     return {str(b["bird_id"]): b for b in bird_stats(start=None, end=None)}
 
 
-def _get_record(bird_id: str) -> BirdRecording:
+def _get_bird(bird_id: str) -> Bird:
     db = SessionLocal()
     try:
-        rec = db.query(BirdRecording).filter(BirdRecording.id == bird_id).first()
+        bird = (
+            db.query(Bird)
+            .options(selectinload(Bird.media))
+            .filter(Bird.id == bird_id)
+            .first()
+        )
     finally:
         db.close()
-    if rec is None:
+    if bird is None:
         raise HTTPException(status_code=404, detail="unknown bird")
-    return rec
+    return bird
 
 
 def _media_file(base, name: str | None):
@@ -79,33 +86,60 @@ def _media_file(base, name: str | None):
     return path
 
 
+def _media_json(m, base):
+    return {
+        "id": m.id,
+        "kind": m.kind,
+        "filename": m.filename,
+        "source": m.source,
+        "source_ref": m.source_ref,
+        "credit": m.credit,
+        "licence": m.licence,
+        "country": m.country,
+        "location": m.location,
+        "recorded_on": m.recorded_on,
+        "quality": m.quality,
+        "enabled": bool(m.enabled),
+        "file_present": _media_file(base, m.filename) is not None,
+    }
+
+
 @api_router.get("/bird/{bird_id}")
 def bird_detail(bird_id: str):
-    r = _get_record(bird_id)
-    hist = _history_by_bird().get(str(r.id))
+    b = _get_bird(bird_id)
+    audio, image = b.primary("audio"), b.primary("image")
+    hist = _history_by_bird().get(str(b.id))
     return {
-        "bird_id": r.id,
-        "common_name": r.common_name,
-        "scientific_name": " ".join(p for p in (r.genus, r.species) if p) or None,
-        "genus": r.genus,
-        "species": r.species,
-        "family": r.family,
-        "order": r.order,
-        "country": r.country,
-        "location": r.location,
-        "recorded_on": r.date,
-        "quality": r.quality,
-        "ebird_species_code": r.ebird_species_code,
-        "enabled": r.enabled is not False,
-        "has_audio": _media_file(AUDIO_DIR, r.audio_path) is not None,
-        "has_image": _media_file(IMAGE_DIR, r.image_path) is not None,
+        "bird_id": b.id,
+        "common_name": b.common_name,
+        "scientific_name": b.scientific_name,
+        "genus": b.genus,
+        "species": b.species,
+        "family": b.family,
+        "order": b.order,
+        # Recording details come from the primary recording.
+        "country": audio.country if audio else None,
+        "location": audio.location if audio else None,
+        "recorded_on": audio.recorded_on if audio else None,
+        "quality": audio.quality if audio else None,
+        "ebird_species_code": b.ebird_species_code,
+        "enabled": bool(b.enabled),
+        "notes": b.notes,
+        "has_audio": bool(audio and _media_file(AUDIO_DIR, audio.filename)),
+        "has_image": bool(image and _media_file(IMAGE_DIR, image.filename)),
+        "media": [_media_json(m, AUDIO_DIR if m.kind == "audio" else IMAGE_DIR) for m in b.media],
         "history": hist,
     }
 
 
+def _primary_file(bird_id: str, kind: str):
+    m = _get_bird(bird_id).primary(kind)
+    return _media_file(AUDIO_DIR if kind == "audio" else IMAGE_DIR, m.filename) if m else None
+
+
 @api_router.get("/bird/{bird_id}/audio")
 def bird_audio(bird_id: str):
-    path = _media_file(AUDIO_DIR, _get_record(bird_id).audio_path)
+    path = _primary_file(bird_id, "audio")
     if path is None:
         raise HTTPException(status_code=404, detail="no audio for this bird")
     return FileResponse(path, media_type="audio/mpeg", headers=_PRIVATE_CACHE)
@@ -113,7 +147,7 @@ def bird_audio(bird_id: str):
 
 @api_router.get("/bird/{bird_id}/image")
 def bird_image(bird_id: str):
-    path = _media_file(IMAGE_DIR, _get_record(bird_id).image_path)
+    path = _primary_file(bird_id, "image")
     if path is None:
         raise HTTPException(status_code=404, detail="no image for this bird")
     media_type = mimetypes.guess_type(path.name)[0] or "image/jpeg"
@@ -122,21 +156,26 @@ def bird_image(bird_id: str):
 
 @api_router.get("/upcoming")
 def upcoming(days: int = Query(default=14, ge=1, le=60)):
-    """The next daily picks, starting today (NZ), from the same deterministic
-    pick the game uses. Only valid while the bird list stays unchanged:
-    adding/removing birds reshuffles every future (and past) day."""
-    birds = get_birds_for_game()
+    """The next daily picks, starting today (NZ). Days already served are
+    pinned; later days use the deterministic pick, which shifts if birds are
+    added or removed (disabling one only moves that bird's own days)."""
     hist = _history_by_bird()
     today = game_today()
+    db = SessionLocal()
+    try:
+        pinned = {p.game_date for p in db.query(DailyPick.game_date).filter(DailyPick.game_date >= today.isoformat())}
+    finally:
+        db.close()
     out = []
     for i in range(days):
         day = today + timedelta(days=i)
-        b = pick_bird_for_date(birds, day)
+        b = bird_for_date(day)
         h = hist.get(str(b.id)) or {}
         prior = [d for d in h.get("dates", []) if d < day.isoformat()]
         out.append(
             {
                 "date": day.isoformat(),
+                "pinned": day.isoformat() in pinned,
                 "bird_id": b.id,
                 "common_name": b.common_name,
                 "scientific_name": b.scientific_name,

@@ -2,8 +2,11 @@
 
 ## What gets recorded
 
-One row per game round in a **separate** SQLite database (`data/analytics.db`,
-never mixed with `birds.db`). Table `round_stats`:
+One row per game round, in table `round_stats` of the main database
+(PostgreSQL in production via `DATABASE_URL`; see `db.py`). Before
+2026-11-18 this lived in a separate SQLite file, `data/analytics.db`, which
+`migrate_sqlite_to_db.py` copied across (the old file is left on the
+`birdle-data` volume as a backup). Table `round_stats`:
 
 | column        | meaning                                                        |
 |---------------|---------------------------------------------------------------|

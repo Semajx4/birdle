@@ -29,23 +29,32 @@ class FullBird(BaseModel):
     genus: str
     order: str
     family: str
-    audio_path: str
+    audio_path: str | None
     image_path: str | None
+    audio_media_id: int | None = None
+    image_media_id: int | None = None
     enabled: bool = True
 
     @classmethod
-    def from_orm_record(cls, r):
+    def from_bird(cls, b, audio=None, image=None):
+        """Build from a models.Bird. ``audio``/``image`` override the bird's
+        primary media (e.g. the media pinned for a past day)."""
+        audio = audio or b.primary("audio")
+        image = image or b.primary("image")
         return cls(
-                id=r.id,
-                common_name=r.common_name or "Unknown",
-                scientific_name=f"{r.genus or ''} {r.species or ''}".strip(),
-                genus=r.genus or "unknown",
-                order=r.order or "unknown",
-                family=r.family or "unknown",
-                audio_path=r.audio_path,
-                image_path=r.image_path,
-                enabled=r.enabled is not False,
+                id=b.id,
+                common_name=b.common_name or "Unknown",
+                scientific_name=f"{b.genus or ''} {b.species or ''}".strip(),
+                genus=b.genus or "unknown",
+                order=b.order or "unknown",
+                family=b.family or "unknown",
+                audio_path=audio.filename if audio else None,
+                image_path=image.filename if image else None,
+                audio_media_id=audio.id if audio else None,
+                image_media_id=image.id if image else None,
+                enabled=bool(b.enabled),
                 )
+
     def to_public(self):
         return BirdPublic(
                 id=self.id,

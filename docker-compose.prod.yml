@@ -1,0 +1,97 @@
+# Production stack. Use ./start.sh (it prepares GeoIP + secrets, then runs
+# `docker compose -f docker-compose.prod.yml up -d --build`).
+# docker-compose.yml is the separate hot-reload dev setup.
+#
+# Data:
+#   birdle-pg     PostgreSQL data (birds, media rows, daily picks, analytics)
+#   birdle-media  audio + image files. Seeded automatically from the image's
+#                 datasets/ the first time the volume is created; after that
+#                 the volume is the source of truth.
+#   birdle-data   legacy volume: analytics IP salt (+ old analytics.db).
+#   ./backups     nightly pg_dump files, 30 days kept.
+
+name: birdle
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: birdle-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: birdle
+      POSTGRES_DB: birdle
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - birdle-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U birdle -d birdle"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [internal]
+
+  birdle:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    image: birdle
+    container_name: birdle
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql+psycopg://birdle:${POSTGRES_PASSWORD}@db:5432/birdle
+      MEDIA_ROOT: /app/datasets
+      GEOIP_DB_PATH: /app/geoip/GeoLite2-Country.mmdb
+    volumes:
+      - birdle-data:/app/data
+      - birdle-media:/app/datasets
+      - ./geoip:/app/geoip:ro
+    # Loopback only, for `curl localhost:8000` on the host. The public path
+    # is the Cloudflare tunnel over the cloudflare_default network.
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:8000:8000"
+    networks: [internal, cloudflare]
+
+  db-backup:
+    image: postgres:17-alpine
+    container_name: birdle-db-backup
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./backups:/backups
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          f=/backups/birdle-$$(date +%F).sql.gz
+          if pg_dump -h db -U birdle -d birdle | gzip > "$$f.tmp"; then
+            mv "$$f.tmp" "$$f" && echo "backup ok: $$f"
+          else
+            rm -f "$$f.tmp"; echo "backup FAILED" >&2
+          fi
+          find /backups -name 'birdle-*.sql.gz' -mtime +30 -delete
+          sleep 86400
+        done
+    networks: [internal]
+
+networks:
+  internal: {}
+  cloudflare:
+    external: true
+    name: cloudflare_default
+
+volumes:
+  birdle-pg:
+    name: birdle-pg
+  birdle-media:
+    name: birdle-media
+  birdle-data:
+    external: true
+    name: birdle-data

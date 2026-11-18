@@ -1,107 +1,108 @@
-# models.py
-from sqlalchemy import Column, String, Float, Integer, Boolean, inspect, text
-from sqlalchemy.ext.declarative import declarative_base
+"""Bird data: species (``birds``), their media files (``media``) and the
+bird served on each game day (``daily_picks``).
 
-Base = declarative_base()
+Media files stay on disk (``MEDIA_ROOT``, see services/game.py); rows store
+the filename relative to the kind's directory (audio/ or bird_images/).
+"""
 
-class BirdRecording(Base):
-    __tablename__ = "bird_recordings"
+from datetime import datetime, timezone
+
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
+from sqlalchemy.orm import relationship
+
+from db import Base, SessionLocal  # noqa: F401  (SessionLocal re-exported)
+
+
+def _now():
+    return datetime.now(timezone.utc)
+
+
+class Bird(Base):
+    """One row per bird the game can use.
+
+    ``id`` is the original xeno-canto recording id for birds migrated from
+    the old ``bird_recordings`` table. It is the id the frontend guesses with
+    and analytics stores, so it must never change.
+    """
+
+    __tablename__ = "birds"
+
     id = Column(String, primary_key=True)
-    common_name = Column(String)
+    common_name = Column(String, nullable=False)
     genus = Column(String)
-    order = Column(String)
-    family = Column(String)
     species = Column(String)
+    family = Column(String)
+    order = Column("taxon_order", String)
+    ebird_species_code = Column(String)
+    # False = never the daily bird and hidden from the guess list.
+    enabled = Column(Boolean, nullable=False, default=True)
+    # Fixed position in the daily-pick shuffle (see services/game.py). Kept
+    # explicit so the schedule never depends on row/storage order.
+    pick_order = Column(Integer, nullable=False, unique=True)
+    notes = Column(Text)
+    created_at = Column(DateTime(timezone=True), default=_now)
+    updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    media = relationship(
+        "Media",
+        back_populates="bird",
+        cascade="all, delete-orphan",
+        order_by="(Media.position, Media.id)",
+    )
+
+    @property
+    def scientific_name(self):
+        return " ".join(p for p in (self.genus, self.species) if p) or None
+
+    def primary(self, kind: str):
+        """First enabled media of a kind ('audio' / 'image'), or None."""
+        for m in self.media:
+            if m.kind == kind and m.enabled:
+                return m
+        return None
+
+
+class Media(Base):
+    """A recording or photo of a bird. Many per bird."""
+
+    __tablename__ = "media"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    bird_id = Column(String, ForeignKey("birds.id", ondelete="CASCADE"), nullable=False, index=True)
+    kind = Column(String(10), nullable=False)          # 'audio' | 'image'
+    filename = Column(String, nullable=False)          # relative to the kind's directory
+    source = Column(String)                            # 'xeno-canto' | 'macaulay' | 'own' | ...
+    source_ref = Column(String)                        # e.g. xeno-canto recording id
+    credit = Column(String)
+    licence = Column(String)
     country = Column(String)
     location = Column(String)
-    audio_path = Column(String)  # local or remote path to saved audio
-    image_path = Column(String)
-    date = Column(String)
+    recorded_on = Column(String)
     quality = Column(String)
-    ebird_species_code = Column(String)
-    # False = never picked as the daily bird and hidden from the guess list.
-    # Kept in the table (and in the pick shuffle, see services/game.py) so
-    # toggling one bird doesn't reshuffle every other day.
-    enabled = Column(Boolean, nullable=False, default=True, server_default="1")
+    enabled = Column(Boolean, nullable=False, default=True)
+    position = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), default=_now)
+
+    bird = relationship("Bird", back_populates="media")
 
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+class DailyPick(Base):
+    """The bird actually served on a game day, pinned the first time the day
+    is played. Later edits to the bird list can't change it."""
 
-# Setup DB
-engine = create_engine("sqlite:///birds.db")
-Base.metadata.create_all(engine)
+    __tablename__ = "daily_picks"
 
-# create_all() won't add columns to an existing table.
-if "enabled" not in {c["name"] for c in inspect(engine).get_columns("bird_recordings")}:
-    with engine.begin() as _conn:
-        _conn.execute(text("ALTER TABLE bird_recordings ADD COLUMN enabled BOOLEAN NOT NULL DEFAULT 1"))
-
-from sqlalchemy.orm import sessionmaker
-
-SessionLocal = sessionmaker(bind=engine)
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-def save_to_db(recording, audio_path):
-    db = SessionLocal()
-    try:
-        bird = BirdRecording(
-            id=recording["id"],
-            common_name=recording["en"],
-            genus=recording["gen"],
-            order=None,
-            family=None,
-            species=recording["sp"],
-            country=recording["cnt"],
-            location=recording["loc"],
-            audio_path=audio_path,
-            date=recording["date"],
-            quality=recording["q"],
-            ebird_species_code=None,
-        )
-        db.merge(bird)  # merge avoids duplicates based on primary key
-        db.commit()
-    finally:
-        db.close()
-
-def update_bird_taxa(id: str, species_code: str, order: str, family: str):
-    db = SessionLocal()
-    try:
-        bird = db.query(BirdRecording).filter_by(id=id).first()
-        
-        if bird:
-            bird.order = order
-            bird.family = family
-            bird.ebird_species_code
-            db.commit()
-    finally:
-        db.close()
-
-def get_all_birds():
-    db = SessionLocal()
-    try:
-        return db.query(BirdRecording).all()
-    finally:
-        db.close()
-
-
-def update_bird_species_code(id, species_code):
-    db = SessionLocal()
-    try:
-        bird = db.query(BirdRecording).filter_by(id=id).first()
-
-        if bird:
-            bird.ebird_species_code = species_code
-            db.commit()
-    finally:
-        db.close()
-
-
-
-
+    game_date = Column(String(10), primary_key=True)   # NZ date, YYYY-MM-DD
+    bird_id = Column(String, ForeignKey("birds.id"), nullable=False, index=True)
+    audio_media_id = Column(Integer, ForeignKey("media.id", ondelete="SET NULL"))
+    image_media_id = Column(Integer, ForeignKey("media.id", ondelete="SET NULL"))
+    source = Column(String, nullable=False, default="served")   # 'served' | 'backfill'
+    picked_at = Column(DateTime(timezone=True), default=_now)

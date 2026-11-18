@@ -74,3 +74,6 @@ geoip2>=4.7.0,<5.0.0
 
 # admin: Cloudflare Access JWT verification
 PyJWT[crypto]>=2.10,<3
+
+# main database (PostgreSQL)
+psycopg[binary]>=3.2,<4

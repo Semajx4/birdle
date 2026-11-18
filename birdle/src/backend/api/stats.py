@@ -37,7 +37,9 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from sqlalchemy import Integer, cast, distinct, func
 
 from models.analytics import AnalyticsSession, RoundStat
-from models.models import BirdRecording, SessionLocal
+from sqlalchemy.orm import selectinload
+
+from models.models import Bird, SessionLocal
 from services import cf_access
 from services.analytics import extract_client_ip
 
@@ -140,22 +142,30 @@ def _in_range(q, start: str | None, end: str | None):
 
 
 def _bird_info(bird_ids) -> dict:
-    """bird_id -> {common_name, scientific_name, country, location} from birds.db."""
+    """bird_id -> {common_name, scientific_name, country, location}.
+
+    country/location describe the bird's primary recording."""
     ids = {str(b) for b in bird_ids if b}
     if not ids:
         return {}
     db = SessionLocal()
     try:
-        rows = db.query(BirdRecording).filter(BirdRecording.id.in_(ids)).all()
-        return {
-            r.id: {
-                "common_name": r.common_name,
-                "scientific_name": " ".join(p for p in (r.genus, r.species) if p) or None,
-                "country": r.country,
-                "location": r.location,
+        rows = (
+            db.query(Bird)
+            .options(selectinload(Bird.media))
+            .filter(Bird.id.in_(ids))
+            .all()
+        )
+        out = {}
+        for b in rows:
+            audio = b.primary("audio")
+            out[b.id] = {
+                "common_name": b.common_name,
+                "scientific_name": b.scientific_name,
+                "country": audio.country if audio else None,
+                "location": audio.location if audio else None,
             }
-            for r in rows
-        }
+        return out
     finally:
         db.close()
 
@@ -364,7 +374,7 @@ def countries(start: str | None = StartQ, end: str | None = EndQ):
                 end,
             )
             .group_by(RoundStat.country)
-            .order_by(func.count(RoundStat.round_id).desc())
+            .order_by(func.count(RoundStat.round_id).desc(), RoundStat.country)
             .all()
         )
         return [

@@ -9,6 +9,16 @@ from util.logging_config import configure_logging
 
 configure_logging()
 
+from db import init_db
+
+init_db()
+
+# Dev convenience: an empty database gets the birds from the committed
+# legacy birds.db. Production is migrated explicitly (migrate_sqlite_to_db.py).
+from migrate_sqlite_to_db import seed_birds_if_empty
+
+seed_birds_if_empty()
+
 from api import admin, bird, stats
 
 app = FastAPI()
