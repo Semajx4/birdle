@@ -220,6 +220,21 @@
   .toast button { all: unset; cursor: pointer; font-weight: 650; text-decoration: underline; }
   @media (max-width: 640px) { .form { grid-template-columns: 1fr; } }
 
+  .strip { margin-top: 6px; }
+  .strip svg { display: block; width: 100%; height: 44px; background: var(--bg); border-radius: 6px; cursor: pointer; touch-action: none; }
+  .strip .sum { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; margin-top: 4px; font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+  .strip .sum .grow { flex: 1; }
+  .strip .loading { font-size: 12px; color: var(--text-3); padding: 14px 0; text-align: center; background: var(--bg); border-radius: 6px; }
+  .trim { margin-top: 8px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; font-size: 12.5px; }
+  .trim .ranges { display: grid; grid-template-columns: auto 1fr auto; gap: 6px 10px; align-items: center; }
+  .trim input[type=range] { width: 100%; accent-color: var(--accent); }
+  .trim .keep { margin: 8px 0; color: var(--text); font-variant-numeric: tabular-nums; }
+  .trim .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .trim .err { color: var(--bad-text); }
+  .sound { display: inline-flex; align-items: center; gap: 6px; justify-content: flex-end; white-space: nowrap; }
+  .sound .meter { width: 40px; height: 6px; border-radius: 3px; background: var(--hover); overflow: hidden; }
+  .sound .meter b { display: block; height: 100%; background: var(--won); }
+
   .empty { color: var(--text-3); padding: 12px 0; }
   .loading { opacity: .55; transition: opacity .15s; }
   footer { color: var(--text-3); font-size: 12px; margin-top: 24px; }
@@ -311,7 +326,14 @@
           <option value="noaudio">Missing recording</option>
           <option value="outside">Recorded outside NZ</option>
           <option value="never">Never picked</option>
+          <option value="quiet">Mostly quiet (scan first)</option>
         </select>
+        <select id="birdSort" aria-label="Sort birds">
+          <option value="name">Sort: name</option>
+          <option value="sound">Sort: least sound first</option>
+          <option value="length">Sort: longest first</option>
+        </select>
+        <button class="btn small" id="scanBtn" type="button">Scan recordings</button>
         <span class="count" id="birdCount"></span>
       </div>
       <div class="table-wrap"><table id="editorTable"></table></div>
@@ -827,7 +849,8 @@
       ${b.is_today ? `<p class="notice">This is today's bird. Today's game keeps the photo and recording it started with; a replacement shows from the next time this bird comes up.</p>` : ""}
       ${b.enabled ? "" : `<p class="notice">Disabled: never picked as the daily bird and hidden from the guess list.</p>`}
       ${b.has_image ? `<img class="bird-img" src="${media}/image?v=${stamp}" alt="${esc(b.common_name || "")}">` : `<div class="bird-noimg">No image</div>`}
-      ${b.has_audio ? `<audio controls preload="metadata" src="${media}/audio?v=${stamp}"></audio>` : `<p class="muted">No recording in use.</p>`}
+      ${b.has_audio ? `<audio id="mainAudio" controls preload="metadata" src="${media}/audio?v=${stamp}"></audio>
+        <div class="strip" data-media="${curAudio.id}" data-main="1"></div>` : `<p class="muted">No recording in use.</p>`}
       <p class="muted" style="margin:2px 0 0;font-size:12px">Photo: ${curImg ? label(curImg) : "none"} · Recording: ${curAudio ? label(curAudio) : "none"}</p>
       <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
         <button class="btn small" data-upload="image">Replace photo</button>
@@ -849,7 +872,8 @@
                 <span class="muted">${label(m)}</span></div>
               ${m.file_present ? `<button class="btn small" data-use="${m.id}">Use this</button>` : ""}
             </div>
-            ${m.kind === "audio" && m.file_present ? `<audio controls preload="none" src="/internal/admin/api/media/${m.id}/file"></audio>` : ""}
+            ${m.kind === "audio" && m.file_present ? `<audio controls preload="none" src="/internal/admin/api/media/${m.id}/file"></audio>
+              <div class="strip" data-media="${m.id}"></div>` : ""}
           </div>`).join("")}</div>` : ""}
       <h4>Play history</h4>
       ${h && h.dates.length ? `
@@ -907,7 +931,202 @@
       };
     });
 
+    // Loudness strips (decoded in the browser).
+    $("#birdBody").querySelectorAll(".strip[data-media]").forEach((el) => {
+      const audioEl = el.dataset.main ? $("#mainAudio") : el.closest(".media-item").querySelector("audio");
+      mountStrip(el, +el.dataset.media, audioEl, el.dataset.main ? b : null, my);
+    });
+
     if (h && h.dates.length) loadBirdDays(b, my);
+  }
+
+  // ---------- audio analysis ----------
+  const fmtT = (sec, dec = 0) => {
+    if (sec == null || !isFinite(sec)) return "—";
+    const m = Math.floor(sec / 60), s = sec - m * 60;
+    return `${m}:${s.toFixed(dec).padStart(dec ? 3 + dec : 2, "0")}`;
+  };
+  let actx = null;
+  const analysisCache = new Map();   // media id -> Promise<analysis>
+
+  async function fetchBytes(url) {
+    const headers = {};
+    try { const t = sessionStorage.getItem(TOKEN_KEY); if (t) headers["X-Stats-Token"] = t; } catch {}
+    const res = await fetch(url, { headers, credentials: "same-origin", redirect: "manual" });
+    if (res.type === "opaqueredirect" || res.status === 0) throw new AuthError("expired");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.arrayBuffer();
+  }
+
+  // Loudness per 50 ms window (dBFS), plus where the "active" sound is:
+  // windows louder than max(noise floor + 10 dB, peak - 30 dB, -60 dBFS).
+  function analyseMedia(id) {
+    if (analysisCache.has(id)) return analysisCache.get(id);
+    const p = (async () => {
+      const bytes = await fetchBytes(`/internal/admin/api/media/${id}/file`);
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      const ab = await new Promise((ok, bad) => { const r = actx.decodeAudioData(bytes, ok, bad); if (r && r.then) r.then(ok, bad); });
+      const sr = ab.sampleRate, n = ab.length, chans = [];
+      for (let c = 0; c < ab.numberOfChannels; c++) chans.push(ab.getChannelData(c));
+      const win = Math.max(1, Math.round(sr * 0.05)), nw = Math.ceil(n / win);
+      const db = new Float32Array(nw);
+      for (let w = 0; w < nw; w++) {
+        const a = w * win, e = Math.min(n, a + win);
+        let sum = 0;
+        for (let i = a; i < e; i++) {
+          let v = 0;
+          for (const ch of chans) v += ch[i];
+          v /= chans.length;
+          sum += v * v;
+        }
+        db[w] = 10 * Math.log10(sum / Math.max(1, e - a) + 1e-12);
+      }
+      const sorted = Array.from(db).sort((x, y) => x - y);
+      const floor = sorted[Math.floor(nw * 0.1)] ?? -90, peak = sorted[Math.min(nw - 1, Math.floor(nw * 0.99))] ?? 0;
+      const thr = Math.max(floor + 10, peak - 30, -60);
+      let active = 0, first = null, last = null;
+      for (let w = 0; w < nw; w++) if (db[w] >= thr) { active++; if (first == null) first = w; last = w; }
+      const ws = win / sr;
+      return {
+        duration: ab.duration, windowSec: ws, db, floor, peak, thr,
+        activeSecs: active * ws,
+        first: first == null ? null : first * ws,
+        last: last == null ? null : Math.min(ab.duration, (last + 1) * ws),
+      };
+    })();
+    analysisCache.set(id, p);
+    p.catch(() => analysisCache.delete(id));
+    return p;
+  }
+
+  const summaryOf = (a) => ({ duration: a.duration, activeSecs: a.activeSecs, first: a.first, last: a.last });
+
+  function describe(a) {
+    const parts = [`${fmtT(a.duration)} long`];
+    if (a.first == null) { parts.push("no clear sound found"); return parts.join(" · "); }
+    parts.push(`sound for ${Math.round(a.activeSecs)}s (${Math.round((a.activeSecs / a.duration) * 100)}%)`);
+    parts.push(`between ${fmtT(a.first)} and ${fmtT(a.last)}`);
+    const tail = a.duration - a.last, head = a.first;
+    if (tail >= 3) parts.push(`quiet for the last ${Math.round(tail)}s`);
+    if (head >= 3) parts.push(`quiet for the first ${Math.round(head)}s`);
+    return parts.join(" · ");
+  }
+
+  async function mountStrip(el, mediaId, audioEl, bird, my) {
+    el.innerHTML = `<div class="loading">Analysing recording…</div>`;
+    let a;
+    try { a = await analyseMedia(mediaId); }
+    catch (e) { if (my === birdSeq) el.innerHTML = `<div class="sum">Couldn't analyse this recording (${esc(e.message)}).</div>`; return; }
+    if (my !== birdSeq) return;
+    saveScan(mediaId, summaryOf(a));
+    const W = 600, H = 44, N = 150, colW = W / N;
+    const lo = a.floor - 3, hi = Math.max(a.peak, lo + 6);
+    const per = a.db.length / N;
+    let bars = "";
+    for (let i = 0; i < N; i++) {
+      const s0 = Math.floor(i * per), s1 = Math.max(s0 + 1, Math.floor((i + 1) * per));
+      let v = -Infinity;
+      for (let j = s0; j < s1 && j < a.db.length; j++) v = Math.max(v, a.db[j]);
+      const t = Math.max(0, Math.min(1, (v - lo) / (hi - lo)));
+      const h = Math.max(1.5, t * (H - 6));
+      bars += `<rect x="${(i * colW + 0.5).toFixed(1)}" y="${((H - h) / 2).toFixed(1)}" width="${(colW - 1).toFixed(1)}" height="${h.toFixed(1)}" rx="1" fill="var(--${v >= a.thr ? "won" : "unfinished"})"/>`;
+    }
+    el.innerHTML = `
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Loudness over time: ${esc(describe(a))}">
+        ${bars}
+        <rect class="cut-l" x="0" y="0" width="0" height="${H}" fill="var(--surface)" opacity=".75" visibility="hidden"/>
+        <rect class="cut-r" x="${W}" y="0" width="0" height="${H}" fill="var(--surface)" opacity=".75" visibility="hidden"/>
+        <line class="ph" x1="0" x2="0" y1="0" y2="${H}" stroke="var(--text)" stroke-width="1.5" vector-effect="non-scaling-stroke" visibility="hidden"/>
+      </svg>
+      <div class="sum"><span class="grow">${esc(describe(a))}</span>${bird ? `<button class="btn small" type="button" data-trim>Trim…</button>` : ""}</div>
+      <div class="trim-slot"></div>`;
+    const svg = el.querySelector("svg"), ph = el.querySelector(".ph");
+    const xOf = (t) => (t / a.duration) * W;
+    // Playhead follows playback; click/drag on the strip seeks.
+    if (audioEl) {
+      let raf = 0;
+      const draw = () => {
+        ph.setAttribute("visibility", audioEl.currentTime > 0 || !audioEl.paused ? "visible" : "hidden");
+        const x = xOf(audioEl.currentTime); ph.setAttribute("x1", x); ph.setAttribute("x2", x);
+        if (!audioEl.paused) raf = requestAnimationFrame(draw);
+      };
+      audioEl.addEventListener("play", () => { cancelAnimationFrame(raf); draw(); });
+      audioEl.addEventListener("pause", draw);
+      audioEl.addEventListener("seeked", draw);
+      const seek = (ev) => {
+        const r = svg.getBoundingClientRect();
+        const t = Math.max(0, Math.min(a.duration, ((ev.clientX - r.left) / r.width) * a.duration));
+        audioEl.currentTime = t; draw();
+      };
+      svg.addEventListener("pointerdown", (ev) => { seek(ev); svg.setPointerCapture(ev.pointerId); });
+      svg.addEventListener("pointermove", (ev) => { if (svg.hasPointerCapture(ev.pointerId)) seek(ev); });
+    }
+    const trimBtn = el.querySelector("[data-trim]");
+    if (trimBtn) trimBtn.onclick = () => openTrim(el, a, mediaId, audioEl, bird, xOf);
+  }
+
+  function openTrim(el, a, mediaId, audioEl, bird, xOf) {
+    const slot = el.querySelector(".trim-slot");
+    if (slot.firstChild) { closeTrim(); return; }
+    const W = 600;
+    const cutL = el.querySelector(".cut-l"), cutR = el.querySelector(".cut-r");
+    const s0 = a.first == null ? 0 : Math.max(0, a.first - 0.5);
+    const e0 = a.last == null ? a.duration : Math.min(a.duration, a.last + 0.75);
+    const step = 0.1, max = Math.floor(a.duration * 10) / 10;
+    slot.innerHTML = `<div class="trim">
+      <div class="ranges">
+        <span>Start</span><input type="range" min="0" max="${max}" step="${step}" value="${s0.toFixed(1)}" data-k="start" aria-label="Trim start"><span class="t-start"></span>
+        <span>End</span><input type="range" min="0" max="${max}" step="${step}" value="${e0.toFixed(1)}" data-k="end" aria-label="Trim end"><span class="t-end"></span>
+      </div>
+      <div class="keep"></div>
+      <div class="actions">
+        <button class="btn small" type="button" data-preview>Preview</button>
+        <button class="btn primary small" type="button" data-save>Save trimmed version</button>
+        <button class="btn small" type="button" data-cancel>Cancel</button>
+        <span class="err"></span>
+      </div>
+      <p class="muted" style="margin:8px 0 0">Saves a new recording and uses it; the original stays under Earlier photos &amp; recordings. Starting values are the detected sound plus a little padding.</p>
+    </div>`;
+    const [rs, re] = slot.querySelectorAll("input[type=range]");
+    const update = (which) => {
+      let s = +rs.value, e = +re.value;
+      if (e - s < 1) { if (which === "start") { s = Math.max(0, e - 1); rs.value = s; } else { e = Math.min(max, s + 1); re.value = e; } }
+      slot.querySelector(".t-start").textContent = fmtT(s, 1);
+      slot.querySelector(".t-end").textContent = fmtT(e, 1);
+      slot.querySelector(".keep").textContent = `Keep ${fmtT(s, 1)} – ${fmtT(e, 1)} (${(e - s).toFixed(1)}s of ${a.duration.toFixed(1)}s)`;
+      cutL.setAttribute("width", xOf(s)); cutL.setAttribute("visibility", "visible");
+      cutR.setAttribute("x", xOf(e)); cutR.setAttribute("width", Math.max(0, W - xOf(e))); cutR.setAttribute("visibility", "visible");
+    };
+    rs.oninput = () => update("start"); re.oninput = () => update("end");
+    update();
+    let stopAt = null;
+    const onTime = () => { if (stopAt != null && audioEl.currentTime >= stopAt) { audioEl.pause(); stopAt = null; } };
+    audioEl.addEventListener("timeupdate", onTime);
+    slot.querySelector("[data-preview]").onclick = () => { audioEl.currentTime = +rs.value; stopAt = +re.value; audioEl.play(); };
+    function closeTrim() {
+      audioEl.removeEventListener("timeupdate", onTime);
+      slot.innerHTML = ""; cutL.setAttribute("visibility", "hidden"); cutR.setAttribute("visibility", "hidden");
+    }
+    slot.querySelector("[data-cancel]").onclick = closeTrim;
+    slot.querySelector("[data-save]").onclick = async (ev) => {
+      const btn = ev.target; btn.disabled = true; slot.querySelector(".err").textContent = "";
+      try {
+        const nb = await api(`/internal/admin/api/media/${mediaId}/trim`, {}, { method: "POST", body: { start: +rs.value, end: +re.value } });
+        audioEl.pause();
+        afterBirdChange(nb);
+        renderBird(nb);
+        showToast("Trimmed version in use. The original is under Earlier photos & recordings.");
+      } catch (e) { slot.querySelector(".err").textContent = e.message; btn.disabled = false; }
+    };
+  }
+
+  // ---------- scan results (per media id, remembered in this browser) ----------
+  const SCAN_KEY = "birdle-audio-scan-v1";
+  let scanResults = {};
+  try { scanResults = JSON.parse(localStorage.getItem(SCAN_KEY) || "{}") || {}; } catch { scanResults = {}; }
+  function saveScan(id, summary) {
+    scanResults[id] = summary;
+    try { localStorage.setItem(SCAN_KEY, JSON.stringify(scanResults)); } catch {}
   }
 
   function audioDuration(file) {
@@ -956,7 +1175,8 @@
     upcomingLoaded = false;
     const i = editorBirds.findIndex((x) => x.bird_id === nb.bird_id);
     if (i >= 0) {
-      editorBirds[i] = { ...editorBirds[i], enabled: nb.enabled, has_audio: nb.has_audio, has_image: nb.has_image };
+      const audio = nb.media.find((m) => m.kind === "audio" && m.enabled && m.file_present);
+      editorBirds[i] = { ...editorBirds[i], enabled: nb.enabled, has_audio: nb.has_audio, has_image: nb.has_image, audio_media_id: audio ? audio.id : null };
       renderEditor();
     }
     if (!$("#upcomingPanel").hidden) { upcomingLoaded = true; loadUpcoming(); }
@@ -998,6 +1218,7 @@
     // Recordings are all tagged country "New Zealand"; spot the Pacific ones by place name.
     if (f === "outside" && !OUTSIDE_NZ.test(b.location || "")) return false;
     if (f === "never" && b.times_picked) return false;
+    if (f === "quiet") { const r = scanResults[b.audio_media_id]; if (!r || r.activeSecs / r.duration >= 0.3) return false; }
     if (!q) return true;
     return [b.common_name, b.scientific_name, b.family, b.order, b.location, b.bird_id].some((x) => x && x.toLowerCase().includes(q));
   }
@@ -1007,14 +1228,26 @@
     const q = $("#birdSearch").value.trim().toLowerCase();
     const f = $("#birdFilter").value;
     const rows = editorBirds.filter((b) => birdMatches(b, q, f));
+    const sortBy = $("#birdSort").value;
+    const ratio = (b) => { const r = scanResults[b.audio_media_id]; return r ? r.activeSecs / r.duration : Infinity; };
+    if (sortBy === "sound") rows.sort((x, y) => ratio(x) - ratio(y));
+    else if (sortBy === "length") rows.sort((x, y) => (scanResults[y.audio_media_id]?.duration ?? -1) - (scanResults[x.audio_media_id]?.duration ?? -1));
     const on = editorBirds.filter((b) => b.enabled).length;
     $("#birdCount").textContent = `${rows.length} shown · ${on} of ${editorBirds.length} enabled`;
     if (!rows.length) { t.innerHTML = `<tbody><tr><td class="empty">No birds match.</td></tr></tbody>`; return; }
-    t.innerHTML = `<thead><tr><th>Bird</th><th class="hide-sm">Family</th><th class="hide-sm">Recorded at</th><th class="num">Picked</th><th class="num hide-sm">Win rate</th><th>On</th></tr></thead>
+    const soundCell = (b) => {
+      const r = scanResults[b.audio_media_id];
+      if (!r) return '<span class="muted">—</span>';
+      const p = r.duration ? r.activeSecs / r.duration : 0;
+      return `<span class="sound" title="${esc(describe(r))}"><span class="meter" aria-hidden="true"><b style="width:${Math.round(p * 100)}%"></b></span>${Math.round(r.activeSecs)}s · ${Math.round(p * 100)}%</span>`;
+    };
+    t.innerHTML = `<thead><tr><th>Bird</th><th class="hide-sm">Family</th><th class="hide-sm">Recorded at</th><th class="num">Length</th><th class="num">Sound</th><th class="num">Picked</th><th class="num hide-sm">Win rate</th><th>On</th></tr></thead>
       <tbody>${rows.map((b) => `<tr class="${b.enabled ? "" : "off"}" data-bird="${esc(b.bird_id)}">
         <td>${birdCell(b)}${b.is_today ? ' <i class="tag">today</i>' : ""}${b.has_audio ? "" : ' <i class="tag warn">no recording</i>'}${b.has_image ? "" : ' <i class="tag warn">no image</i>'}</td>
         <td class="hide-sm">${esc(b.family || "—")}<br><span class="sci" style="font-style:normal">${esc(b.order || "")}</span></td>
         <td class="hide-sm muted" style="font-size:12.5px">${esc(b.location || "—")}</td>
+        <td class="num">${scanResults[b.audio_media_id] ? fmtT(scanResults[b.audio_media_id].duration) : '<span class="muted">—</span>'}</td>
+        <td class="num">${soundCell(b)}</td>
         <td class="num">${b.times_picked || '<span class="muted">0</span>'}</td>
         <td class="num hide-sm">${rateCell(b.wins, b.finished)}</td>
         <td><span class="switch"><input type="checkbox" ${b.enabled ? "checked" : ""} aria-label="${esc(b.common_name)} enabled"><span></span></span></td></tr>`).join("")}</tbody>`;
@@ -1032,6 +1265,32 @@
   }
   $("#birdSearch").addEventListener("input", renderEditor);
   $("#birdFilter").addEventListener("change", renderEditor);
+  $("#birdSort").addEventListener("change", renderEditor);
+
+  // Analyse every in-use recording that hasn't been scanned yet.
+  let scanning = false;
+  $("#scanBtn").addEventListener("click", async () => {
+    if (scanning) return;
+    const todo = editorBirds.filter((b) => b.audio_media_id && b.has_audio && !scanResults[b.audio_media_id]);
+    const btn = $("#scanBtn");
+    if (!todo.length) { showToast("All recordings are already scanned."); return; }
+    scanning = true; btn.disabled = true;
+    let done = 0, failed = 0, lastPaint = 0;
+    const next = async () => {
+      while (todo.length) {
+        const b = todo.shift();
+        try { const a = await analyseMedia(b.audio_media_id); saveScan(b.audio_media_id, summaryOf(a)); analysisCache.delete(b.audio_media_id); }
+        catch (e) { failed++; if (e instanceof AuthError) { todo.length = 0; showBanner(e.message); } }
+        done++;
+        btn.textContent = `Scanning ${done}/${done + todo.length}…`;
+        if (Date.now() - lastPaint > 800) { lastPaint = Date.now(); renderEditor(); }
+      }
+    };
+    await Promise.all([next(), next(), next()]);
+    scanning = false; btn.disabled = false; btn.textContent = "Scan recordings";
+    renderEditor();
+    showToast(`Scanned ${done - failed} recording${done - failed === 1 ? "" : "s"}${failed ? `, ${failed} failed` : ""}.`);
+  });
 
   // ---------- tabs ----------
   let upcomingLoaded = false;

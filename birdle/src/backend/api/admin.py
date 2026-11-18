@@ -7,13 +7,16 @@ same Cloudflare check as the stats API, so off the admin hostname it 404s.
 
 import logging
 import mimetypes
+import shutil
+import subprocess
+import tempfile
 import uuid
 from datetime import timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, RedirectResponse
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import selectinload
 
 from api.stats import _check_access, birds as bird_stats, came_via_cloudflare, require_access
@@ -236,6 +239,7 @@ def list_birds():
             "location": audio.location if audio else None,
             "has_audio": bool(audio and _media_file(AUDIO_DIR, audio.filename)),
             "has_image": bool(image and _media_file(IMAGE_DIR, image.filename)),
+            "audio_media_id": audio.id if audio else None,
             "media_count": len(b.media),
             "times_picked": len(h.get("dates", [])),
             "last_picked": (h.get("dates") or [None])[0],
@@ -383,6 +387,102 @@ def use_media(media_id: int):
     finally:
         db.close()
     log.info("bird %s: now using media %s", bird_id, media_id)
+    invalidate_bird_cache()
+    return bird_detail(bird_id)
+
+
+class TrimRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    start: float = Field(ge=0, le=3600)
+    end: float = Field(gt=0, le=3600)
+
+
+def _cut_wav(src_wav: Path, dst_wav: Path, start: float, end: float) -> float:
+    """Copy [start, end) seconds of a 16-bit PCM WAV with short fades at
+    both ends (avoids clicks). Returns the kept length in seconds."""
+    import array
+    import wave
+
+    with wave.open(str(src_wav), "rb") as w:
+        nch, width, rate, total = w.getnchannels(), w.getsampwidth(), w.getframerate(), w.getnframes()
+        if width != 2:
+            raise HTTPException(status_code=500, detail="unexpected audio format")
+        f0 = min(total, int(round(start * rate)))
+        f1 = min(total, int(round(end * rate)))
+        if f1 - f0 < rate:   # under a second left (range past the end?)
+            raise HTTPException(status_code=422, detail="less than a second left after trimming (is the range past the end?)")
+        w.setpos(f0)
+        pcm = array.array("h")
+        pcm.frombytes(w.readframes(f1 - f0))
+    frames = f1 - f0
+    fade_in = min(int(0.05 * rate), frames // 4)
+    fade_out = min(int(0.3 * rate), frames // 4)
+    for f in range(fade_in):
+        g = f / fade_in
+        for c in range(nch):
+            pcm[f * nch + c] = int(pcm[f * nch + c] * g)
+    for k in range(fade_out):
+        f = frames - fade_out + k
+        g = 1 - (k + 1) / fade_out
+        for c in range(nch):
+            pcm[f * nch + c] = int(pcm[f * nch + c] * g)
+    with wave.open(str(dst_wav), "wb") as w:
+        w.setnchannels(nch)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(pcm.tobytes())
+    return frames / rate
+
+
+@api_router.post("/media/{media_id}/trim")
+def trim_media(media_id: int, req: TrimRequest):
+    """Cut a recording to [start, end] seconds as a NEW recording, which
+    becomes the one in use. The original is kept. Decodes with mpg123,
+    cuts and fades in Python, re-encodes with lame (VBR ~190 kbps)."""
+    mpg123, lame = shutil.which("mpg123"), shutil.which("lame")
+    if not (mpg123 and lame):
+        raise HTTPException(status_code=501, detail="trimming isn't available (mpg123/lame not installed)")
+    if req.end - req.start < 1.0:
+        raise HTTPException(status_code=422, detail="keep at least 1 second")
+
+    db = SessionLocal()
+    try:
+        m = db.get(Media, media_id)
+        if m is None or m.kind != "audio":
+            raise HTTPException(status_code=404, detail="unknown recording")
+        src = _media_file(AUDIO_DIR, m.filename)
+        if src is None:
+            raise HTTPException(status_code=409, detail="that file is missing")
+
+        name = f"trim-{uuid.uuid4()}.mp3"
+        with tempfile.TemporaryDirectory() as td:
+            wav_in, wav_out, mp3_out = Path(td, "in.wav"), Path(td, "out.wav"), Path(td, "out.mp3")
+            try:
+                subprocess.run([mpg123, "-q", "-w", str(wav_in), str(src)], check=True, timeout=120, capture_output=True)
+                kept = _cut_wav(wav_in, wav_out, req.start, req.end)
+                subprocess.run([lame, "--quiet", "-V", "2", str(wav_out), str(mp3_out)], check=True, timeout=120, capture_output=True)
+            except subprocess.TimeoutExpired:
+                raise HTTPException(status_code=500, detail="trimming took too long")
+            except subprocess.CalledProcessError as exc:
+                log.warning("trim failed for media %s: %s", media_id, exc.stderr.decode(errors="replace")[-500:])
+                raise HTTPException(status_code=500, detail="couldn't decode or encode this recording")
+            _write_atomic(AUDIO_DIR, name, mp3_out.read_bytes())
+
+        siblings = db.query(Media).filter(Media.bird_id == m.bird_id, Media.kind == "audio").all()
+        base_source = (m.source or "unknown").removesuffix(" (trimmed)")
+        db.add(Media(
+            bird_id=m.bird_id, kind="audio", filename=name,
+            source=f"{base_source} (trimmed)", source_ref=m.source_ref,
+            credit=m.credit, licence=m.licence, country=m.country, location=m.location,
+            recorded_on=m.recorded_on, quality=m.quality,
+            enabled=True, position=min(x.position for x in siblings) - 1,
+        ))
+        bird_id = m.bird_id
+        db.commit()
+    finally:
+        db.close()
+    log.info("bird %s: trimmed media %s to %.2f-%.2fs (%.1fs) as %s", bird_id, media_id, req.start, req.end, kept, name)
     invalidate_bird_cache()
     return bird_detail(bird_id)
 
