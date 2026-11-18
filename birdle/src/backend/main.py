@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 
 from fastapi import FastAPI, Request
@@ -25,13 +26,19 @@ app = FastAPI()
 
 request_logger = logging.getLogger("birdle.request")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# The frontend is served from this same origin (and the Vite dev server
+# proxies /api server-side), so no cross-origin access is needed by default.
+# CORS_ORIGINS (comma-separated, e.g. "https://example.com") opts specific
+# origins in for read-only use of the public game API.
+_cors_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
+if _cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins,
+        allow_credentials=False,
+        allow_methods=["GET", "POST"],
+        allow_headers=["Content-Type"],
+    )
 
 
 @app.middleware("http")
