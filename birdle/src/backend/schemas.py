@@ -31,6 +31,7 @@ class FullBird(BaseModel):
     family: str
     audio_path: str
     image_path: str | None
+    enabled: bool = True
 
     @classmethod
     def from_orm_record(cls, r):
@@ -43,6 +44,7 @@ class FullBird(BaseModel):
                 family=r.family or "unknown",
                 audio_path=r.audio_path,
                 image_path=r.image_path,
+                enabled=r.enabled is not False,
                 )
     def to_public(self):
         return BirdPublic(

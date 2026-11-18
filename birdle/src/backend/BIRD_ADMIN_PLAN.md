@@ -185,3 +185,31 @@ Notes:
 - Is SQLite fine for concurrent admin writes and game reads? (Probably yes at
   this traffic level; WAL mode would help.)
 - Where should uploaded originals vs processed (resized/trimmed) files live?
+
+## Enabled flag and the daily pick (added 2026-11-18)
+
+Done: `bird_recordings.enabled` (default 1). Disabled birds are never the
+daily bird and are hidden from the guess list. `pick_bird_for_date` still
+shuffles **all** rows by the date seed and takes the first *enabled* bird,
+so toggling a bird only changes the days that bird would have had. They
+fall to the next bird in that day's shuffle, and every other day keeps its
+bird. Disabling "Identity unknown" (506525) changed 9 of 500 days, all of
+them its own. Adding or deleting rows still reshuffles every day.
+
+Uses for the editor's deselect option: no usable sound or image yet,
+inappropriate recordings, or birds recorded outside NZ (e.g. Atiu Swiftlet,
+Rarotonga Monarch: Cook Islands recordings tagged country "New Zealand").
+
+Future rethink of the randomiser. The goal is fewer seabirds and more forest
+birds without hand-disabling them all. Options:
+- **Weights / categories:** a `weight` or habitat tag per bird, with a
+  weighted pick. A plain weighted draw is not stable when weights change;
+  a stable variant is to give each bird a per-day score
+  `hash(date, bird_id) ** (1/weight)` and take the max (weighted
+  rendezvous hashing). Changing one bird's weight then only moves the days
+  it wins or loses.
+- **No-repeat cycles:** shuffle once per cycle (seed = cycle number) and
+  walk it, so every enabled bird appears once before any repeats (see
+  `daily_bird_repeats` notes / step 2 above).
+- Either way, pin past days: store each day's picked bird_id once it has
+  been served, so later list edits can never rewrite history or today.

@@ -1,5 +1,5 @@
 # models.py
-from sqlalchemy import Column, String, Float, Integer, Boolean
+from sqlalchemy import Column, String, Float, Integer, Boolean, inspect, text
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
@@ -19,6 +19,10 @@ class BirdRecording(Base):
     date = Column(String)
     quality = Column(String)
     ebird_species_code = Column(String)
+    # False = never picked as the daily bird and hidden from the guess list.
+    # Kept in the table (and in the pick shuffle, see services/game.py) so
+    # toggling one bird doesn't reshuffle every other day.
+    enabled = Column(Boolean, nullable=False, default=True, server_default="1")
 
 
 from sqlalchemy import create_engine
@@ -27,6 +31,11 @@ from sqlalchemy.orm import sessionmaker
 # Setup DB
 engine = create_engine("sqlite:///birds.db")
 Base.metadata.create_all(engine)
+
+# create_all() won't add columns to an existing table.
+if "enabled" not in {c["name"] for c in inspect(engine).get_columns("bird_recordings")}:
+    with engine.begin() as _conn:
+        _conn.execute(text("ALTER TABLE bird_recordings ADD COLUMN enabled BOOLEAN NOT NULL DEFAULT 1"))
 
 from sqlalchemy.orm import sessionmaker
 

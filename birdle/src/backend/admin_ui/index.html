@@ -733,6 +733,7 @@
       ["eBird code", b.ebird_species_code],
     ].filter(([, v]) => v);
     $("#birdBody").innerHTML = `
+      ${b.enabled ? "" : `<p class="banner" style="margin:0 0 12px;padding:8px 12px">Excluded: never picked as the daily bird and hidden from the guess list.</p>`}
       ${b.has_image ? `<img class="bird-img" src="${media}/image" alt="${esc(b.common_name || "")}">` : `<div class="bird-noimg">No image</div>`}
       ${b.has_audio ? `<audio controls preload="metadata" src="${media}/audio"></audio>` : `<p class="muted">No recording.</p>`}
       <dl class="facts">${facts.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>

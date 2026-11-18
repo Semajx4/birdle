@@ -96,6 +96,7 @@ def bird_detail(bird_id: str):
         "recorded_on": r.date,
         "quality": r.quality,
         "ebird_species_code": r.ebird_species_code,
+        "enabled": r.enabled is not False,
         "has_audio": _media_file(AUDIO_DIR, r.audio_path) is not None,
         "has_image": _media_file(IMAGE_DIR, r.image_path) is not None,
         "history": hist,

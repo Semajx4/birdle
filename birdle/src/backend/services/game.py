@@ -66,15 +66,25 @@ def get_birds_for_game():
 
 
 def get_all_birds():
-    return [b.to_public() for b in get_birds_for_game()]
+    """The guess list: enabled birds only."""
+    return [b.to_public() for b in get_birds_for_game() if b.enabled]
 
 def pick_bird_for_date(birds, day):
     # Deterministic per-day pick: seed a shuffle with the date so every
     # worker/process derives the same bird independently, without needing
     # to share cache state.
+    #
+    # The shuffle is over ALL birds (disabled included) and the first enabled
+    # one wins. Disabling a bird therefore only changes the days it would have
+    # been picked (they fall to the next bird in that day's shuffle); every
+    # other day keeps its bird. Adding or deleting rows still reshuffles
+    # everything, since the list itself changes.
     shuffled = birds[:]
     random.Random(day.isoformat()).shuffle(shuffled)
-    return shuffled[0]
+    for bird in shuffled:
+        if bird.enabled:
+            return bird
+    raise RuntimeError("no enabled birds to pick from")
 
 
 # The daily bird rolls over at midnight New Zealand time. The frontend's
