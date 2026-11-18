@@ -177,6 +177,49 @@
   .bird-body h4 { font-size: 13px; margin: 16px 0 6px; font-weight: 650; }
   .bird-body table th, .bird-body table td { padding: 5px 8px; font-size: 12.5px; }
 
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .toolbar input[type=search], .toolbar select, .form input, .form textarea, .form select {
+    font: inherit; padding: 6px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text);
+  }
+  .toolbar input[type=search] { flex: 1 1 220px; min-width: 0; }
+  .toolbar .count { color: var(--text-3); font-size: 12.5px; margin-left: auto; }
+  .switch { position: relative; display: inline-block; width: 34px; height: 20px; flex: none; }
+  .switch input { opacity: 0; width: 100%; height: 100%; margin: 0; position: absolute; cursor: pointer; z-index: 1; }
+  .switch span { position: absolute; inset: 0; border-radius: 99px; background: var(--unfinished); transition: background .15s; }
+  .switch span::after { content: ""; position: absolute; width: 16px; height: 16px; top: 2px; left: 2px; border-radius: 50%; background: #fff; transition: transform .15s; box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+  .switch input:checked + span { background: var(--won); }
+  .switch input:checked + span::after { transform: translateX(14px); }
+  .switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .switch input:disabled + span { opacity: .5; }
+  tr.off td:not(:last-child) { opacity: .55; }
+  .tag { display: inline-block; padding: 0 6px; border-radius: 4px; font-size: 11px; background: var(--hover); color: var(--text-2); margin-left: 4px; font-style: normal; white-space: nowrap; }
+  .tag.warn { background: var(--flag-bg); color: var(--flag-text); }
+  .btn { font: inherit; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
+  .btn:hover { background: var(--hover); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn:disabled { opacity: .55; cursor: default; }
+  .btn.small { padding: 3px 9px; font-size: 12.5px; }
+  .form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; margin-top: 12px; }
+  .form label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--text-2); min-width: 0; }
+  .form label.wide { grid-column: 1 / -1; }
+  .form label.check { flex-direction: row; align-items: center; gap: 8px; font-size: 13px; color: var(--text); }
+  .form input, .form textarea { width: 100%; }
+  .form textarea { min-height: 64px; resize: vertical; }
+  .form .actions { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; }
+  .form .err { color: var(--bad-text); font-size: 12.5px; }
+  .media-item { border: 1px solid var(--border); border-radius: 10px; padding: 10px; margin-bottom: 8px; }
+  .media-item .row1 { display: flex; align-items: center; gap: 10px; }
+  .media-item .row1 .what { flex: 1; min-width: 0; font-size: 13px; }
+  .media-item .row1 .what .muted { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+  .media-item img { width: 56px; height: 42px; object-fit: cover; border-radius: 6px; background: var(--bg); flex: none; }
+  .media-item audio { width: 100%; margin-top: 8px; height: 32px; }
+  .media-item.off { opacity: .6; }
+  .notice { border-radius: 8px; padding: 8px 12px; font-size: 12.5px; margin: 0 0 12px; background: var(--flag-bg); color: var(--flag-text); }
+  .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--text); color: var(--surface); border-radius: 10px; padding: 10px 14px; font-size: 13px; display: flex; gap: 12px; align-items: center; z-index: 20; box-shadow: 0 6px 24px rgba(0,0,0,.25); max-width: calc(100vw - 32px); }
+  .toast button { all: unset; cursor: pointer; font-weight: 650; text-decoration: underline; }
+  @media (max-width: 640px) { .form { grid-template-columns: 1fr; } }
+
   .empty { color: var(--text-3); padding: 12px 0; }
   .loading { opacity: .55; transition: opacity .15s; }
   footer { color: var(--text-3); font-size: 12px; margin-top: 24px; }
@@ -208,6 +251,7 @@
   <nav class="tabs" role="tablist" aria-label="Admin sections">
     <button role="tab" id="tab-stats" data-tab="stats" aria-selected="true" aria-controls="main">Stats</button>
     <button role="tab" id="tab-upcoming" data-tab="upcoming" aria-selected="false" aria-controls="upcomingPanel">Upcoming birds</button>
+    <button role="tab" id="tab-birds" data-tab="birds" aria-selected="false" aria-controls="birdsPanel">Birds</button>
   </nav>
 
   <div id="banner"></div>
@@ -253,10 +297,32 @@
     </section>
   </section>
 
+  <section id="birdsPanel" hidden>
+    <section class="card">
+      <h2>Birds</h2>
+      <p class="sub">Switch a bird off to stop it being the daily bird and hide it from the guess list. Only that bird's future days change; days already played stay as they were. Click a name to see it and replace its photo or recording.</p>
+      <div class="toolbar">
+        <input type="search" id="birdSearch" placeholder="Search name, scientific name, family, location or ID" aria-label="Search birds">
+        <select id="birdFilter" aria-label="Filter birds">
+          <option value="all">All birds</option>
+          <option value="on">Enabled</option>
+          <option value="off">Disabled</option>
+          <option value="noimage">Missing image</option>
+          <option value="noaudio">Missing recording</option>
+          <option value="outside">Recorded outside NZ</option>
+          <option value="never">Never picked</option>
+        </select>
+        <span class="count" id="birdCount"></span>
+      </div>
+      <div class="table-wrap"><table id="editorTable"></table></div>
+    </section>
+  </section>
+
   <footer id="footer"></footer>
 </div>
 
 <div class="tip" id="tip"></div>
+<div class="toast" id="toast" hidden role="status" aria-live="polite"></div>
 
 <dialog class="bird" id="birdDialog" aria-labelledby="birdTitle">
   <div class="bird-head">
@@ -329,18 +395,31 @@
 
   // ---------- API ----------
   class AuthError extends Error {}
-  async function api(path, params = {}) {
+  async function api(path, params = {}, { method = "GET", body, raw } = {}) {
     const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v != null && v !== ""));
     const headers = {};
+    if (body !== undefined) headers["Content-Type"] = "application/json";
+    if (raw !== undefined) headers["Content-Type"] = raw.type || "application/octet-stream";
     let token = null;
     try { token = sessionStorage.getItem(TOKEN_KEY); } catch {}
     if (token) headers["X-Stats-Token"] = token;
     const base = path.startsWith("/internal/") ? "" : API;
-    const res = await fetch(`${base}${path}${qs.toString() ? "?" + qs : ""}`, { headers, credentials: "same-origin", redirect: "manual" });
+    const res = await fetch(`${base}${path}${qs.toString() ? "?" + qs : ""}`, {
+      method, headers, credentials: "same-origin", redirect: "manual",
+      body: raw !== undefined ? raw : body !== undefined ? JSON.stringify(body) : undefined,
+    });
     // Cloudflare Access answers an expired session with a redirect to its login page.
     if (res.type === "opaqueredirect" || res.status === 0) throw new AuthError("expired");
     if (res.status === 401) throw new AuthError("token");
-    if (!res.ok) throw new Error(`${path}: HTTP ${res.status}`);
+    if (!res.ok) {
+      let msg = `HTTP ${res.status}`;
+      try {
+        const j = await res.json();
+        if (typeof j.detail === "string") msg = j.detail;
+        else if (Array.isArray(j.detail)) msg = j.detail.map((d) => `${(d.loc || []).slice(-1)[0]}: ${d.msg}`).join("; ");
+      } catch {}
+      throw new Error(msg);
+    }
     return res.json();
   }
 
@@ -705,7 +784,7 @@
     if (b) { e.preventDefault(); openBird(b.dataset.bird); }
   });
 
-  let birdSeq = 0;
+  let birdSeq = 0, currentBird = null;
   async function openBird(id) {
     const my = ++birdSeq;
     $("#birdTitle").textContent = "Loading…";
@@ -722,60 +801,261 @@
       return;
     }
     if (my !== birdSeq) return;
+    renderBird(b);
+  }
+
+  const SOURCE_LABEL = { own: "Your upload", "xeno-canto": "xeno-canto", macaulay: "Macaulay Library" };
+  const inUse = (b, kind) => b.media.find((m) => m.kind === kind && m.enabled && m.file_present);
+
+  function renderBird(b) {
+    const my = birdSeq;
+    currentBird = b;
     const media = `/internal/admin/api/bird/${encodeURIComponent(b.bird_id)}`;
+    const stamp = Date.now();   // bust the browser cache after a replacement
     $("#birdTitle").textContent = b.common_name || `Bird ${b.bird_id}`;
     $("#birdSci").textContent = b.scientific_name || "";
     const h = b.history;
     const facts = [
       ["Family", b.family], ["Order", b.order],
       ["Recorded at", b.location], ["Recorded on", b.recorded_on],
-      ["Quality", b.quality], ["Recording ID", b.bird_id],
-      ["eBird code", b.ebird_species_code],
+      ["Quality", b.quality], ["Bird ID", b.bird_id],
     ].filter(([, v]) => v);
+    const curImg = inUse(b, "image"), curAudio = inUse(b, "audio");
+    const older = b.media.filter((m) => m !== curImg && m !== curAudio);
+    const label = (m) => `${SOURCE_LABEL[m.source] || m.source || "Unknown source"}${m.source === "own" && m.added ? ` · added ${esc(dayLabel(m.added.slice(0, 10), { day: "numeric", month: "short", year: "numeric" }))}` : ""}`;
     $("#birdBody").innerHTML = `
-      ${b.enabled ? "" : `<p class="banner" style="margin:0 0 12px;padding:8px 12px">Excluded: never picked as the daily bird and hidden from the guess list.</p>`}
-      ${b.has_image ? `<img class="bird-img" src="${media}/image" alt="${esc(b.common_name || "")}">` : `<div class="bird-noimg">No image</div>`}
-      ${b.has_audio ? `<audio controls preload="metadata" src="${media}/audio"></audio>` : `<p class="muted">No recording.</p>`}
-      <dl class="facts">${facts.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>
+      ${b.is_today ? `<p class="notice">This is today's bird. Today's game keeps the photo and recording it started with; a replacement shows from the next time this bird comes up.</p>` : ""}
+      ${b.enabled ? "" : `<p class="notice">Disabled: never picked as the daily bird and hidden from the guess list.</p>`}
+      ${b.has_image ? `<img class="bird-img" src="${media}/image?v=${stamp}" alt="${esc(b.common_name || "")}">` : `<div class="bird-noimg">No image</div>`}
+      ${b.has_audio ? `<audio controls preload="metadata" src="${media}/audio?v=${stamp}"></audio>` : `<p class="muted">No recording in use.</p>`}
+      <p class="muted" style="margin:2px 0 0;font-size:12px">Photo: ${curImg ? label(curImg) : "none"} · Recording: ${curAudio ? label(curAudio) : "none"}</p>
+      <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+        <button class="btn small" data-upload="image">Replace photo</button>
+        <button class="btn small" data-upload="audio">Replace recording</button>
+        <span style="flex:1"></span>
+        <span class="switch" title="${b.enabled ? "Enabled" : "Disabled"}"><input type="checkbox" id="panelEnabled" ${b.enabled ? "checked" : ""} aria-label="Enabled"><span></span></span>
+        <span class="muted" style="font-size:12.5px">${b.enabled ? "Enabled" : "Disabled"}</span>
+      </div>
+      <p class="muted" id="uploadStatus" style="margin:6px 0 0;font-size:12.5px" role="status"></p>
+      <input type="file" id="fileImage" accept="image/jpeg,image/png,image/webp" hidden>
+      <input type="file" id="fileAudio" accept=".mp3,audio/mpeg" hidden>
+      <dl class="facts">${facts.map(([k, val]) => `<dt>${esc(k)}</dt><dd>${esc(val)}</dd>`).join("")}</dl>
+      ${older.length ? `<h4>Earlier photos &amp; recordings</h4>
+        <div id="mediaList">${older.map((m) => `
+          <div class="media-item" data-media="${m.id}">
+            <div class="row1">
+              ${m.kind === "image" && m.file_present ? `<img src="/internal/admin/api/media/${m.id}/file" alt="">` : ""}
+              <div class="what">${m.kind === "audio" ? "Recording" : "Photo"}${m.file_present ? "" : ' <i class="tag warn">file missing</i>'}
+                <span class="muted">${label(m)}</span></div>
+              ${m.file_present ? `<button class="btn small" data-use="${m.id}">Use this</button>` : ""}
+            </div>
+            ${m.kind === "audio" && m.file_present ? `<audio controls preload="none" src="/internal/admin/api/media/${m.id}/file"></audio>` : ""}
+          </div>`).join("")}</div>` : ""}
       <h4>Play history</h4>
       ${h && h.dates.length ? `
         <p class="muted" style="margin:0 0 6px;font-size:12.5px">${h.rounds} rounds · ${h.finished} finished · ${h.wins} won${h.win_rate != null ? ` (${pct(h.win_rate)})` : ""}${h.avg_guesses_when_finished != null ? ` · avg ${num(h.avg_guesses_when_finished)} guesses` : ""}</p>
         <div class="table-wrap"><table id="birdDays"><tbody><tr><td class="muted">Loading days…</td></tr></tbody></table></div>`
         : `<p class="muted" style="margin:0">Never been the daily bird.</p>`}`;
-    if (h && h.dates.length) {
-      // Per-day numbers come from /daily, filtered to this bird's dates.
-      try {
-        const days = await api("/daily", { start: h.dates[h.dates.length - 1], end: h.dates[0] });
-        if (my !== birdSeq) return;
-        const mine = days.filter((d) => String(d.bird_id) === String(b.bird_id));
-        $("#birdDays").innerHTML = `<thead><tr><th>Date</th><th class="num">Rounds</th><th class="num">Finished</th><th class="num">Wins</th><th class="num">Win rate</th></tr></thead>
-          <tbody>${mine.map((d) => `<tr><td>${esc(dayLabel(d.game_date))}</td><td class="num">${d.rounds}</td><td class="num">${d.finished}</td><td class="num">${d.wins}</td><td class="num">${rateCell(d.wins, d.finished)}</td></tr>`).join("")}</tbody>`;
-      } catch {
-        if (my === birdSeq) $("#birdDays").innerHTML = `<tbody><tr><td class="muted">Couldn't load days.</td></tr></tbody>`;
-      }
+
+    const pe = $("#panelEnabled");
+    pe.onchange = async () => {
+      pe.disabled = true;
+      try { renderBird(await saveBird(b.bird_id, { enabled: pe.checked }, b)); }
+      catch (e) { pe.checked = !pe.checked; pe.disabled = false; showToast(`Couldn't save: ${e.message}`); }
+    };
+
+    // Replace photo / recording
+    const status = $("#uploadStatus");
+    const pickers = { image: $("#fileImage"), audio: $("#fileAudio") };
+    $("#birdBody").querySelectorAll("[data-upload]").forEach((btn) => {
+      btn.onclick = () => { pickers[btn.dataset.upload].value = ""; pickers[btn.dataset.upload].click(); };
+    });
+    for (const [kind, input] of Object.entries(pickers)) {
+      input.onchange = async () => {
+        const file = input.files[0];
+        if (!file) return;
+        if (kind === "audio") {
+          const secs = await audioDuration(file);
+          if (secs == null) { status.textContent = "That file doesn't play as audio here. Recordings must be MP3."; return; }
+          if (secs > 60 && !confirm(`This recording is ${Math.round(secs)} seconds long. The game's recordings are normally under a minute. Use it anyway?`)) return;
+        }
+        const btns = $("#birdBody").querySelectorAll("[data-upload], [data-use]");
+        btns.forEach((x) => (x.disabled = true));
+        status.textContent = `Uploading ${file.name} (${(file.size / 1048576).toFixed(1)} MB)…`;
+        try {
+          const nb = await api(`/internal/admin/api/bird/${encodeURIComponent(b.bird_id)}/upload`, { kind }, { method: "POST", raw: file });
+          afterBirdChange(nb);
+          if (my === birdSeq) renderBird(nb);
+          showToast(kind === "image" ? "New photo in use." : "New recording in use.");
+        } catch (e) {
+          status.textContent = `Upload failed: ${e.message}`;
+          btns.forEach((x) => (x.disabled = false));
+        }
+      };
+    }
+
+    // Switch back to an earlier one
+    $("#birdBody").querySelectorAll("[data-use]").forEach((btn) => {
+      btn.onclick = async () => {
+        btn.disabled = true;
+        try {
+          const nb = await api(`/internal/admin/api/media/${btn.dataset.use}/use`, {}, { method: "POST" });
+          afterBirdChange(nb);
+          if (my === birdSeq) renderBird(nb);
+          showToast("Switched.");
+        } catch (e) { btn.disabled = false; showToast(`Couldn't switch: ${e.message}`); }
+      };
+    });
+
+    if (h && h.dates.length) loadBirdDays(b, my);
+  }
+
+  function audioDuration(file) {
+    return new Promise((resolve) => {
+      const a = new Audio();
+      const url = URL.createObjectURL(file);
+      const done = (v) => { URL.revokeObjectURL(url); resolve(v); };
+      a.preload = "metadata";
+      a.onloadedmetadata = () => done(isFinite(a.duration) ? a.duration : 0);
+      a.onerror = () => done(null);
+      a.src = url;
+    });
+  }
+
+  async function loadBirdDays(b, my) {
+    // Per-day numbers come from /daily, filtered to this bird's dates.
+    const h = b.history;
+    try {
+      const days = await api("/daily", { start: h.dates[h.dates.length - 1], end: h.dates[0] });
+      if (my !== birdSeq || !$("#birdDays")) return;
+      const mine = days.filter((d) => String(d.bird_id) === String(b.bird_id));
+      $("#birdDays").innerHTML = `<thead><tr><th>Date</th><th class="num">Rounds</th><th class="num">Finished</th><th class="num">Wins</th><th class="num">Win rate</th></tr></thead>
+        <tbody>${mine.map((d) => `<tr><td>${esc(dayLabel(d.game_date))}</td><td class="num">${d.rounds}</td><td class="num">${d.finished}</td><td class="num">${d.wins}</td><td class="num">${rateCell(d.wins, d.finished)}</td></tr>`).join("")}</tbody>`;
+    } catch {
+      if (my === birdSeq && $("#birdDays")) $("#birdDays").innerHTML = `<tbody><tr><td class="muted">Couldn't load days.</td></tr></tbody>`;
     }
   }
 
+  // Save a bird patch; returns the fresh detail. Offers undo for on/off.
+  async function saveBird(id, patch, prev) {
+    const nb = await api(`/internal/admin/api/bird/${encodeURIComponent(id)}`, {}, { method: "PATCH", body: patch });
+    afterBirdChange(nb);
+    if ("enabled" in patch && Object.keys(patch).length === 1) {
+      showToast(`${nb.common_name} ${nb.enabled ? "enabled" : "disabled"}.`, async () => {
+        const back = await api(`/internal/admin/api/bird/${encodeURIComponent(id)}`, {}, { method: "PATCH", body: { enabled: prev.enabled } });
+        afterBirdChange(back);
+        if (dlg.open && currentBird && currentBird.bird_id === id) renderBird(back);
+        showToast(`${back.common_name} ${back.enabled ? "enabled" : "disabled"} again.`);
+      });
+    }
+    return nb;
+  }
+
+  // Keep the other views in step after an edit.
+  function afterBirdChange(nb) {
+    upcomingLoaded = false;
+    const i = editorBirds.findIndex((x) => x.bird_id === nb.bird_id);
+    if (i >= 0) {
+      editorBirds[i] = { ...editorBirds[i], enabled: nb.enabled, has_audio: nb.has_audio, has_image: nb.has_image };
+      renderEditor();
+    }
+    if (!$("#upcomingPanel").hidden) { upcomingLoaded = true; loadUpcoming(); }
+  }
+
+  let toastTimer;
+  function showToast(msg, undo) {
+    const t = $("#toast");
+    t.innerHTML = `<span>${esc(msg)}</span>${undo ? '<button type="button">Undo</button>' : ""}`;
+    t.hidden = false;
+    if (undo) t.querySelector("button").onclick = async () => {
+      t.hidden = true;
+      try { await undo(); } catch (e) { showToast(`Undo failed: ${e.message}`); }
+    };
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => (t.hidden = true), undo ? 8000 : 3000);
+  }
+
+  // ---------- birds editor tab ----------
+  let editorBirds = [], editorLoaded = false;
+  async function loadEditor() {
+    const t = $("#editorTable");
+    try {
+      editorBirds = await api("/internal/admin/api/birds");
+      renderEditor();
+    } catch (e) {
+      editorLoaded = false;
+      if (e instanceof AuthError) showBanner(e.message);
+      t.innerHTML = `<tbody><tr><td class="empty">Couldn't load birds (${esc(e.message)}).</td></tr></tbody>`;
+    }
+  }
+
+  const OUTSIDE_NZ = /cook islands|rarotonga|aitutaki|atiu|norfolk|niue|tonga|samoa|fiji|australia/i;
+  function birdMatches(b, q, f) {
+    if (f === "on" && !b.enabled) return false;
+    if (f === "off" && b.enabled) return false;
+    if (f === "noimage" && b.has_image) return false;
+    if (f === "noaudio" && b.has_audio) return false;
+    // Recordings are all tagged country "New Zealand"; spot the Pacific ones by place name.
+    if (f === "outside" && !OUTSIDE_NZ.test(b.location || "")) return false;
+    if (f === "never" && b.times_picked) return false;
+    if (!q) return true;
+    return [b.common_name, b.scientific_name, b.family, b.order, b.location, b.bird_id].some((x) => x && x.toLowerCase().includes(q));
+  }
+
+  function renderEditor() {
+    const t = $("#editorTable");
+    const q = $("#birdSearch").value.trim().toLowerCase();
+    const f = $("#birdFilter").value;
+    const rows = editorBirds.filter((b) => birdMatches(b, q, f));
+    const on = editorBirds.filter((b) => b.enabled).length;
+    $("#birdCount").textContent = `${rows.length} shown · ${on} of ${editorBirds.length} enabled`;
+    if (!rows.length) { t.innerHTML = `<tbody><tr><td class="empty">No birds match.</td></tr></tbody>`; return; }
+    t.innerHTML = `<thead><tr><th>Bird</th><th class="hide-sm">Family</th><th class="hide-sm">Recorded at</th><th class="num">Picked</th><th class="num hide-sm">Win rate</th><th>On</th></tr></thead>
+      <tbody>${rows.map((b) => `<tr class="${b.enabled ? "" : "off"}" data-bird="${esc(b.bird_id)}">
+        <td>${birdCell(b)}${b.is_today ? ' <i class="tag">today</i>' : ""}${b.has_audio ? "" : ' <i class="tag warn">no recording</i>'}${b.has_image ? "" : ' <i class="tag warn">no image</i>'}</td>
+        <td class="hide-sm">${esc(b.family || "—")}<br><span class="sci" style="font-style:normal">${esc(b.order || "")}</span></td>
+        <td class="hide-sm muted" style="font-size:12.5px">${esc(b.location || "—")}</td>
+        <td class="num">${b.times_picked || '<span class="muted">0</span>'}</td>
+        <td class="num hide-sm">${rateCell(b.wins, b.finished)}</td>
+        <td><span class="switch"><input type="checkbox" ${b.enabled ? "checked" : ""} aria-label="${esc(b.common_name)} enabled"><span></span></span></td></tr>`).join("")}</tbody>`;
+    t.querySelectorAll("tbody tr[data-bird]").forEach((tr) => {
+      const box = tr.querySelector("input[type=checkbox]");
+      box.onchange = async () => {
+        const b = editorBirds.find((x) => x.bird_id === tr.dataset.bird);
+        box.disabled = true;
+        try {
+          const nb = await saveBird(b.bird_id, { enabled: box.checked }, b);
+          if (dlg.open && currentBird && currentBird.bird_id === nb.bird_id) renderBird(nb);
+        } catch (e) { box.checked = !box.checked; box.disabled = false; showToast(`Couldn't save: ${e.message}`); }
+      };
+    });
+  }
+  $("#birdSearch").addEventListener("input", renderEditor);
+  $("#birdFilter").addEventListener("change", renderEditor);
+
   // ---------- tabs ----------
   let upcomingLoaded = false;
+  const TABS = { stats: "#main", upcoming: "#upcomingPanel", birds: "#birdsPanel" };
+  const tabFromHash = () => ({ "#upcoming": "upcoming", "#birds": "birds" }[location.hash] || "stats");
   function showTab(name) {
-    const stats = name !== "upcoming";
-    document.querySelectorAll(".tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === (stats ? "stats" : "upcoming"))));
-    $("#main").hidden = !stats;
-    $("#upcomingPanel").hidden = stats;
+    if (!TABS[name]) name = "stats";
+    document.querySelectorAll(".tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
+    for (const [k, sel] of Object.entries(TABS)) $(sel).hidden = k !== name;
+    const stats = name === "stats";
     $("#rangeControls").style.visibility = stats ? "" : "hidden";
     $("#footer").hidden = !stats;
     $("#tip").style.display = "none";
     if (stats && lastRange) renderChart(lastDays, lastRange);   // width may have changed while hidden
-    if (!stats && !upcomingLoaded) { upcomingLoaded = true; loadUpcoming(); }
+    if (name === "upcoming" && !upcomingLoaded) { upcomingLoaded = true; loadUpcoming(); }
+    if (name === "birds" && !editorLoaded) { editorLoaded = true; loadEditor(); }
   }
   document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => {
-    history.replaceState(null, "", b.dataset.tab === "stats" ? location.pathname + location.search : "#upcoming");
+    history.replaceState(null, "", b.dataset.tab === "stats" ? location.pathname + location.search : "#" + b.dataset.tab);
     showTab(b.dataset.tab);
   }));
-  window.addEventListener("hashchange", () => showTab(location.hash === "#upcoming" ? "upcoming" : "stats"));
+  window.addEventListener("hashchange", () => showTab(tabFromHash()));
 
-  showTab(location.hash === "#upcoming" ? "upcoming" : "stats");
+  showTab(tabFromHash());
   load();
 })();
 </script>

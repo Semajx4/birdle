@@ -30,6 +30,7 @@ loopback so the only path in is the tunnel.
 
 import ipaddress
 import os
+from urllib.parse import urlsplit
 
 from collections import Counter, defaultdict
 
@@ -71,7 +72,29 @@ def came_via_cloudflare(request: Request) -> bool:
     return bool(request.headers.get("cf-connecting-ip") or request.headers.get(cf_access.HEADER))
 
 
+_UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+def _check_same_origin(request: Request) -> None:
+    """Writes must come from the admin page itself. The app's CORS policy is
+    open (for the public game API), so without this a page on another site
+    could send credentialed writes using the viewer's Access cookie.
+    Browsers always send Origin on cross-origin and non-GET requests."""
+    if request.method not in _UNSAFE_METHODS:
+        return
+    origin = request.headers.get("origin")
+    if origin is None:
+        return  # non-browser client (curl with the stats token)
+    try:
+        origin_host = (urlsplit(origin).hostname or "").lower()
+    except ValueError:
+        origin_host = ""
+    if origin_host != _host(request):
+        raise HTTPException(status_code=403, detail="cross-origin write refused")
+
+
 def _check_access(request: Request, token_header, auth_header) -> None:
+    _check_same_origin(request)
     # Path 1: arrived via Cloudflare (tunnel). Only the admin hostname may reach
     # /internal, and only with a valid Cloudflare Access token. Everything else
     # through Cloudflare gets a plain 404 so the routes don't advertise
