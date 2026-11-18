@@ -248,3 +248,23 @@ Steps 1–3 were done together by moving to PostgreSQL:
   its birds from the committed legacy `birds.db` when the table is empty.
 - The legacy `birds.db` and `util/` fetcher scripts still target the old
   table. Rework the fetchers when adding birds by xeno-canto ID (phase 3).
+
+## To revisit: recording loudness / trimming (added 2026-11-18)
+
+Built and deployed, but **not yet checked by ear**. Come back to it with
+headphones:
+- Run **Scan recordings** on the Birds tab, sort by *least sound first*,
+  and listen to the worst ones. Does the blue (sound) / grey (quiet) strip
+  match what you hear? Detection: 50 ms windows, sound = louder than
+  max(noise floor + 10 dB, peak - 30 dB, -60 dBFS). Faint or distant calls
+  may show as grey. If so, loosen the threshold in `analyseMedia()`
+  (admin_ui/index.html).
+- The "Sound %" counts only the loud moments, so birdsong with gaps scores
+  low even when it's fine. "Between X and Y" / "quiet for the last Ns" are
+  better guides. Decide whether % is worth keeping.
+- Try **Trim…** on a few birds. Check the 0.5 s / 0.75 s default padding,
+  the fades (0.05 s in, 0.3 s out) for clicks or cut-off calls, and the
+  re-encode quality (lame -V2). Originals are kept under *Earlier photos &
+  recordings → Use this* if a trim sounds wrong.
+- Trims and replacements only show from the next time that bird is the
+  daily bird. Today's game keeps what it started with.
