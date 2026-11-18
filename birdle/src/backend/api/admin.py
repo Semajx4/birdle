@@ -17,10 +17,13 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import distinct, func
 from sqlalchemy.orm import selectinload
 
-from api.stats import _check_access, birds as bird_stats, came_via_cloudflare, require_access
-from models.models import Bird, DailyPick, Media, SessionLocal
+from api.stats import StartQ, EndQ, _check_access, _in_range, birds as bird_stats, came_via_cloudflare, require_access
+from models.models import Bird, DailyPick, GeocodeCache, Media, SessionLocal
+from models.analytics import RoundStat
+from services import geocode
 from services.game import AUDIO_DIR, IMAGE_DIR, bird_for_date, game_today, invalidate_bird_cache
 
 log = logging.getLogger("birdle.admin")
@@ -49,6 +52,19 @@ def admin_root():
 @router.get("/", include_in_schema=False)
 def admin_index():
     return FileResponse(_UI_DIR / "index.html", media_type="text/html", headers=_NO_STORE)
+
+
+_VENDOR_DIR = (_UI_DIR / "vendor").resolve()
+
+
+@router.get("/vendor/{path:path}", include_in_schema=False)
+def admin_vendor(path: str):
+    """Third-party files bundled with the admin page (Leaflet), served from
+    here rather than a CDN."""
+    f = (_VENDOR_DIR / path).resolve()
+    if _VENDOR_DIR not in f.parents or not f.is_file():
+        raise HTTPException(status_code=404, detail="Not Found")
+    return FileResponse(f, headers={"Cache-Control": "public, max-age=86400"})
 
 
 # ---------------------------------------------------------------------------
@@ -501,3 +517,104 @@ def media_file(media_id: int):
         raise HTTPException(status_code=404, detail="file missing")
     media_type = "audio/mpeg" if m.kind == "audio" else (mimetypes.guess_type(path.name)[0] or "image/jpeg")
     return FileResponse(path, media_type=media_type, headers=_PRIVATE_CACHE)
+
+
+# ---------------------------------------------------------------------------
+# Map
+# ---------------------------------------------------------------------------
+
+@api_router.get("/map/recordings")
+def map_recordings():
+    """Where each bird's recording in use was made. Coordinates come from the
+    geocode cache only (no lookups here); see /map/locate."""
+    db = SessionLocal()
+    try:
+        birds = db.query(Bird).options(selectinload(Bird.media)).all()
+        cache = {g.query: g for g in db.query(GeocodeCache).filter(~GeocodeCache.query.like("country:%"))}
+    finally:
+        db.close()
+    points, unlocated = [], []
+    for b in birds:
+        audio = b.primary("audio")
+        loc = audio.location if audio else None
+        g = cache.get(loc) if loc else None
+        item = {
+            "bird_id": b.id, "common_name": b.common_name, "scientific_name": b.scientific_name,
+            "enabled": bool(b.enabled), "location": loc,
+        }
+        if g is not None and g.lat is not None:
+            points.append({**item, "lat": g.lat, "lon": g.lon, "approx": bool(g.approx), "matched": g.matched})
+        else:
+            unlocated.append({**item, "looked_up": g is not None})
+    return {"points": points, "unlocated": unlocated}
+
+
+@api_router.post("/map/locate")
+def map_locate(limit: int = Query(default=10, ge=1, le=20)):
+    """Look up coordinates for recording locations not yet tried (about a
+    second each, so this does a few per call)."""
+    db = SessionLocal()
+    try:
+        tried = {q for (q,) in db.query(GeocodeCache.query)}
+        places = [p for (p,) in db.query(distinct(Media.location)).filter(Media.kind == "audio", Media.location.isnot(None))]
+        todo = [p for p in sorted(places) if p not in tried][:limit]
+        found = 0
+        for p in todo:
+            try:
+                found += geocode.locate_place(db, p).lat is not None
+            except Exception as exc:   # network/service trouble: stop, try again later
+                log.warning("geocoding stopped at %r: %s", p, exc)
+                break
+        remaining = len([p for p in places if p not in tried]) - len(todo)
+    finally:
+        db.close()
+    return {"looked_up": len(todo), "found": found, "remaining": max(0, remaining)}
+
+
+@api_router.get("/map/players")
+def map_players(start: str | None = StartQ, end: str | None = EndQ):
+    """Rounds and players per country (all we store is a country code),
+    placed at each country's centre."""
+    db = SessionLocal()
+    try:
+        rows = (
+            _in_range(
+                db.query(RoundStat.country, func.count(RoundStat.round_id), func.count(distinct(RoundStat.ip_hash))),
+                start, end,
+            )
+            .filter(RoundStat.country.isnot(None))
+            .group_by(RoundStat.country)
+            .all()
+        )
+        out = []
+        for code, n_rounds, n_players in rows:
+            try:
+                g = geocode.locate_country(db, code)
+            except Exception as exc:
+                log.warning("couldn't locate country %s: %s", code, exc)
+                g = None
+            out.append({
+                "country": code, "rounds": n_rounds, "players": n_players,
+                "lat": g.lat if g else None, "lon": g.lon if g else None,
+                "name": (g.display_name if g and g.display_name else code),
+            })
+        unknown = _in_range(db.query(func.count(RoundStat.round_id)), start, end).filter(RoundStat.country.is_(None)).scalar() or 0
+        pts = (
+            _in_range(
+                db.query(RoundStat.lat, RoundStat.lon, RoundStat.city, RoundStat.region, RoundStat.country,
+                         func.count(RoundStat.round_id), func.count(distinct(RoundStat.ip_hash))),
+                start, end,
+            )
+            .filter(RoundStat.lat.isnot(None), RoundStat.lon.isnot(None))
+            .group_by(RoundStat.lat, RoundStat.lon, RoundStat.city, RoundStat.region, RoundStat.country)
+            .all()
+        )
+        first_city = _in_range(db.query(func.min(RoundStat.game_date)), start, end).filter(RoundStat.lat.isnot(None)).scalar()
+    finally:
+        db.close()
+    out.sort(key=lambda r: -r["rounds"])
+    points = [
+        {"lat": la, "lon": lo, "city": ci, "region": rg, "country": co, "rounds": n, "players": pl}
+        for la, lo, ci, rg, co, n, pl in pts
+    ]
+    return {"countries": out, "unknown_rounds": unknown, "points": points, "points_since": first_city}

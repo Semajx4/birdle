@@ -11,6 +11,7 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -106,3 +107,19 @@ class DailyPick(Base):
     image_media_id = Column(Integer, ForeignKey("media.id", ondelete="SET NULL"))
     source = Column(String, nullable=False, default="served")   # 'served' | 'backfill'
     picked_at = Column(DateTime(timezone=True), default=_now)
+
+
+class GeocodeCache(Base):
+    """Coordinates looked up for a place name (recording locations) or a
+    country code (players), so each is only ever looked up once. A row with
+    no lat/lon means the lookup found nothing."""
+
+    __tablename__ = "geocode_cache"
+
+    query = Column(String, primary_key=True)        # location text, or "country:NZ"
+    lat = Column(Float)
+    lon = Column(Float)
+    matched = Column(String)                        # the query text that matched
+    display_name = Column(String)
+    approx = Column(Boolean, nullable=False, default=False)
+    looked_up_at = Column(DateTime(timezone=True), default=_now)

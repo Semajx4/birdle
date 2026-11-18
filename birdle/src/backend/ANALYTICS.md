@@ -13,6 +13,8 @@ One row per game round, in table `round_stats` of the main database
 | `round_id`    | UUID of the round (primary key)                               |
 | `game_date`   | NZ date (Pacific/Auckland) of the puzzle; UTC before 2026-10  |
 | `bird_id`     | the answer bird                                               |
+| `region`, `city` | from GeoLite2-City when `GEOIP_CITY_DB_PATH` is set (rounds from 2026-11-18 on), else NULL |
+| `lat`, `lon`  | MaxMind's city-level estimate, rounded to 2 decimals (~1 km); same condition |
 | `ip_hash`     | salted SHA-256 of the client IP — **never the raw IP**        |
 | `country`     | ISO country code from GeoIP, or `NULL` if lookup disabled     |
 | `user_agent`  | request User-Agent (truncated to 500 chars)                   |

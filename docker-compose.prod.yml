@@ -45,6 +45,7 @@ services:
       DATABASE_URL: postgresql+psycopg://birdle:${POSTGRES_PASSWORD}@db:5432/birdle
       MEDIA_ROOT: /app/datasets
       GEOIP_DB_PATH: /app/geoip/GeoLite2-Country.mmdb
+      GEOIP_CITY_DB_PATH: /app/geoip/GeoLite2-City.mmdb
     volumes:
       - birdle-data:/app/data
       - birdle-media:/app/datasets

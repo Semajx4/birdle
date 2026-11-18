@@ -37,6 +37,8 @@ data/
 # GeoIP database (download separately; MaxMind license)
 *.mmdb
 GeoLite2-Country_*/
+GeoLite2-City_*/
+GeoLite2-*.tar.gz
 
 # production runtime (start.sh)
 /geoip/

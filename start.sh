@@ -9,9 +9,10 @@
 #   POSTGRES_PASSWORD - generated here on first run if missing
 #   BIND_ADDR         - host address for the loopback port (default 127.0.0.1)
 #
-# GeoIP: a GeoLite2-Country.mmdb next to this script, loose or inside an
-# extracted MaxMind "GeoLite2-Country_YYYYMMDD/" directory, is copied to
-# ./geoip/ and mounted read-only. Without it country lookups are disabled.
+# GeoIP: GeoLite2-Country.mmdb (country per round) and optionally
+# GeoLite2-City.mmdb (region/city + approximate coordinates) next to this
+# script, loose or inside extracted MaxMind "GeoLite2-<edition>_YYYYMMDD/"
+# directories, are copied to ./geoip/ and mounted read-only.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -25,24 +26,25 @@ if ! grep -q '^POSTGRES_PASSWORD=' .env; then
 fi
 
 # --- GeoIP -------------------------------------------------------------------
+# Copy the newest GeoLite2 <edition>.mmdb (loose, or inside an extracted
+# MaxMind "GeoLite2-<edition>_YYYYMMDD/" directory) into ./geoip/.
 mkdir -p geoip backups
-GEOIP_MMDB=""
-if [ -f GeoLite2-Country.mmdb ]; then
-  GEOIP_MMDB="GeoLite2-Country.mmdb"
-else
-  for d in $(ls -d GeoLite2-Country_*/ 2>/dev/null | sort -r); do
-    if [ -f "${d}GeoLite2-Country.mmdb" ]; then
-      GEOIP_MMDB="${d}GeoLite2-Country.mmdb"
-      break
-    fi
+find_mmdb() {
+  local edition=$1
+  if [ -f "GeoLite2-${edition}.mmdb" ]; then echo "GeoLite2-${edition}.mmdb"; return; fi
+  for d in $(ls -d GeoLite2-"${edition}"_*/ 2>/dev/null | sort -r); do
+    if [ -f "${d}GeoLite2-${edition}.mmdb" ]; then echo "${d}GeoLite2-${edition}.mmdb"; return; fi
   done
-fi
-if [ -n "$GEOIP_MMDB" ]; then
-  cp -f "$GEOIP_MMDB" geoip/GeoLite2-Country.mmdb
-  echo "GeoIP database: $GEOIP_MMDB"
-else
-  echo "GeoIP database: none found; country lookups disabled"
-fi
+}
+for edition in Country City; do
+  src=$(find_mmdb "$edition")
+  if [ -n "$src" ]; then
+    cp -f "$src" "geoip/GeoLite2-${edition}.mmdb"
+    echo "GeoIP ${edition}: $src"
+  else
+    echo "GeoIP ${edition}: none found"
+  fi
+done
 
 # --- legacy container --------------------------------------------------------
 # The app used to be started with plain `docker run`; remove that container so

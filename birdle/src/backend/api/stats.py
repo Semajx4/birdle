@@ -356,7 +356,7 @@ def breakdowns(start: str | None = StartQ, end: str | None = EndQ):
     session = AnalyticsSession()
     try:
         rows = _in_range(
-            session.query(RoundStat.country, RoundStat.user_agent, RoundStat.referrer, RoundStat.ip_hash),
+            session.query(RoundStat.country, RoundStat.region, RoundStat.user_agent, RoundStat.referrer, RoundStat.ip_hash),
             start,
             end,
         ).all()
@@ -367,6 +367,8 @@ def breakdowns(start: str | None = StartQ, end: str | None = EndQ):
         rounds, players = Counter(), defaultdict(set)
         for r in rows:
             k = key_fn(r)
+            if k is None:
+                continue
             rounds[k] += 1
             if r.ip_hash:
                 players[k].add(r.ip_hash)
@@ -379,6 +381,8 @@ def breakdowns(start: str | None = StartQ, end: str | None = EndQ):
         "countries": group(lambda r: r.country or "unknown"),
         "devices": group(lambda r: _device(r.user_agent)),
         "referrers": group(lambda r: r.referrer or "direct / unknown"),
+        # Only rounds recorded with the City database have a region.
+        "regions": group(lambda r: f"{r.region} ({r.country})" if r.region else None),
     }
 
 

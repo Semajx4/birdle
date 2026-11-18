@@ -11,6 +11,8 @@ Env vars:
   ANALYTICS_SALT_FILE - where to persist the generated salt.
   GEOIP_DB_PATH        - path to a MaxMind GeoLite2-Country.mmdb. If unset or
                         unreadable, country is left NULL.
+  GEOIP_CITY_DB_PATH   - optional GeoLite2-City.mmdb. When present, rounds also
+                        get region, city and approximate (city-centre) lat/lon.
 """
 
 import hashlib
@@ -82,32 +84,55 @@ def hash_ip(ip: str):
 # --------------------------------------------------------------------------- #
 # GeoIP (optional)
 # --------------------------------------------------------------------------- #
-_geoip_reader = None
-_geoip_tried = False
+_readers = {}
 
 
-def _get_geoip_reader():
-    global _geoip_reader, _geoip_tried
-    if _geoip_tried:
-        return _geoip_reader
-    _geoip_tried = True
+def _get_reader(env_var: str):
+    """Open (once) the MaxMind database named by an env var, or None."""
+    if env_var in _readers:
+        return _readers[env_var]
+    reader = None
+    db_path = os.environ.get(env_var)
+    if db_path and Path(db_path).exists():
+        try:
+            import geoip2.database
 
-    db_path = os.environ.get("GEOIP_DB_PATH")
-    if not db_path or not Path(db_path).exists():
-        return None
-    try:
-        import geoip2.database
+            reader = geoip2.database.Reader(db_path)
+            logger.info("GeoIP lookups enabled (%s)", db_path)
+        except Exception:
+            logger.exception("failed to open GeoIP db at %s", db_path)
+    _readers[env_var] = reader
+    return reader
 
-        _geoip_reader = geoip2.database.Reader(db_path)
-        logger.info("GeoIP lookups enabled (%s)", db_path)
-    except Exception:
-        logger.exception("failed to open GeoIP db at %s", db_path)
-        _geoip_reader = None
-    return _geoip_reader
+
+_EMPTY_LOCATION = {"country": None, "region": None, "city": None, "lat": None, "lon": None}
+
+
+def lookup_location(ip: str) -> dict:
+    """Country, plus region/city and approximate coordinates when the
+    GeoLite2-City database is available (GEOIP_CITY_DB_PATH). Coordinates
+    are MaxMind's city-level estimate, rounded to 2 decimals (~1 km)."""
+    if not ip:
+        return dict(_EMPTY_LOCATION)
+    city_reader = _get_reader("GEOIP_CITY_DB_PATH")
+    if city_reader is not None:
+        try:
+            r = city_reader.city(ip)
+            lat, lon = r.location.latitude, r.location.longitude
+            return {
+                "country": r.country.iso_code or lookup_country(ip),
+                "region": r.subdivisions.most_specific.name if r.subdivisions else None,
+                "city": r.city.name,
+                "lat": round(lat, 2) if lat is not None else None,
+                "lon": round(lon, 2) if lon is not None else None,
+            }
+        except Exception:
+            pass
+    return {**_EMPTY_LOCATION, "country": lookup_country(ip)}
 
 
 def lookup_country(ip: str):
-    reader = _get_geoip_reader()
+    reader = _get_reader("GEOIP_DB_PATH")
     if not reader or not ip:
         return None
     try:
@@ -148,7 +173,7 @@ def record_round_started(
             bird_id=bird_id,
             game_date=game_date,
             ip_hash=hash_ip(ip),
-            country=lookup_country(ip),
+            **lookup_location(ip),
             user_agent=(request.headers.get("user-agent") or "")[:500],
             referrer=normalize_referrer(referrer),
             guesses=0,

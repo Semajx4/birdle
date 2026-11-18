@@ -58,6 +58,8 @@
   }
 
   * { box-sizing: border-box; }
+  /* Elements given a display value in CSS would otherwise ignore the hidden attribute. */
+  [hidden] { display: none !important; }
   body {
     margin: 0; background: var(--bg); color: var(--text);
     font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -235,6 +237,17 @@
   .sound .meter { width: 40px; height: 6px; border-radius: 3px; background: var(--hover); overflow: hidden; }
   .sound .meter b { display: block; height: 100%; background: var(--won); }
 
+  #map { height: min(70vh, 620px); border-radius: 10px; border: 1px solid var(--border); background: var(--bg); }
+  .map-tools { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-bottom: 10px; font-size: 13px; }
+  .map-tools label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+  .map-tools .grow { flex: 1; }
+  .map-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; font-size: 12.5px; color: var(--text-2); }
+  .map-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+  .leaflet-popup-content { font: 13px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .leaflet-popup-content .birdlink { color: #1c5cab; border-bottom-color: #86b6ef; }
+  .leaflet-popup-content .pop-loc { color: #52514e; font-size: 12px; margin-bottom: 4px; }
+  .leaflet-popup-content ul { margin: 0; padding-left: 16px; max-height: 220px; overflow: auto; }
+
   .empty { color: var(--text-3); padding: 12px 0; }
   .loading { opacity: .55; transition: opacity .15s; }
   footer { color: var(--text-3); font-size: 12px; margin-top: 24px; }
@@ -267,6 +280,7 @@
     <button role="tab" id="tab-stats" data-tab="stats" aria-selected="true" aria-controls="main">Stats</button>
     <button role="tab" id="tab-upcoming" data-tab="upcoming" aria-selected="false" aria-controls="upcomingPanel">Upcoming birds</button>
     <button role="tab" id="tab-birds" data-tab="birds" aria-selected="false" aria-controls="birdsPanel">Birds</button>
+    <button role="tab" id="tab-map" data-tab="map" aria-selected="false" aria-controls="mapPanel">Map</button>
   </nav>
 
   <div id="banner"></div>
@@ -301,6 +315,7 @@
       <div class="card"><h2>Countries</h2><p class="sub">Rounds (players)</p><div id="bdCountries"></div></div>
       <div class="card"><h2>Devices</h2><p class="sub">Rounds (players)</p><div id="bdDevices"></div></div>
       <div class="card"><h2>Referrers</h2><p class="sub">Rounds (players)</p><div id="bdReferrers"></div></div>
+      <div class="card" id="bdRegionsCard" hidden><h2>Regions</h2><p class="sub">Rounds (players) · only rounds recorded with city-level GeoIP</p><div id="bdRegions"></div></div>
     </section>
   </main>
 
@@ -337,6 +352,23 @@
         <span class="count" id="birdCount"></span>
       </div>
       <div class="table-wrap"><table id="editorTable"></table></div>
+    </section>
+  </section>
+
+  <section id="mapPanel" hidden>
+    <section class="card">
+      <h2>Map</h2>
+      <p class="sub">Where each bird's recording was made, and which countries players come from (we only store a country, so players are shown per country). Click a dot for details.</p>
+      <div class="map-tools">
+        <label><input type="checkbox" id="layerRec" checked> Recordings</label>
+        <label><input type="checkbox" id="layerPlayers"> Players by country</label>
+        <span class="grow"></span>
+        <span class="muted" id="mapNote"></span>
+        <button class="btn small" type="button" id="locateBtn" hidden>Look up missing locations</button>
+      </div>
+      <div id="map" role="region" aria-label="Map"></div>
+      <div class="map-legend" id="mapLegend"></div>
+      <div id="unlocated"></div>
     </section>
   </section>
 
@@ -765,6 +797,8 @@
       renderBreakdown($("#bdCountries"), bd.countries);
       renderBreakdown($("#bdDevices"), bd.devices);
       renderBreakdown($("#bdReferrers"), bd.referrers);
+      $("#bdRegionsCard").hidden = !(bd.regions && bd.regions.length);
+      if (bd.regions && bd.regions.length) renderBreakdown($("#bdRegions"), bd.regions);
       $("#footer").textContent = `Dates are NZ game days (Mon–Sun weeks). Loaded ${new Date().toLocaleTimeString("en-NZ", { timeZone: TZ, hour: "2-digit", minute: "2-digit" })} NZ.`;
     } catch (e) {
       if (my !== seq) return;
@@ -1292,10 +1326,163 @@
     showToast(`Scanned ${done - failed} recording${done - failed === 1 ? "" : "s"}${failed ? `, ${failed} failed` : ""}.`);
   });
 
+  // ---------- map tab ----------
+  let mapState = null;   // { map, recLayer, playerLayer }
+  const loadScript = (src) => new Promise((ok, bad) => { const el = document.createElement("script"); el.src = src; el.onload = ok; el.onerror = () => bad(new Error("couldn't load " + src)); document.head.appendChild(el); });
+  const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  // Pacific-centred: the Cook Islands (and the Americas) sit east of NZ
+  // instead of across the date line on the far left.
+  const pacLon = (lon) => (lon < -30 ? lon + 360 : lon);
+
+  async function openMap() {
+    if (mapState) { mapState.map.invalidateSize(); return; }
+    mapState = { loading: true };
+    try {
+      const css = document.createElement("link");
+      css.rel = "stylesheet"; css.href = "/internal/admin/vendor/leaflet/leaflet.css";
+      document.head.appendChild(css);
+      await loadScript("/internal/admin/vendor/leaflet/leaflet.js");
+      await loadScript("/internal/admin/vendor/leaflet-heat/leaflet-heat.js");
+    } catch (e) {
+      mapState = null;
+      $("#map").innerHTML = `<div class="empty" style="padding:20px">${esc(e.message)}</div>`;
+      return;
+    }
+    const map = L.map("map", { worldCopyJump: false, zoomSnap: 0.5 }).setView([-41, 174], 5);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 18,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+    }).addTo(map);
+    mapState = { map, recLayer: L.layerGroup().addTo(map), playerLayer: L.layerGroup() };
+    // Leaflet stops clicks inside popups from reaching the document, so wire
+    // the bird links up directly.
+    map.on("popupopen", (e) => {
+      e.popup.getElement().querySelectorAll(".birdlink").forEach((b) => (b.onclick = () => openBird(b.dataset.bird)));
+    });
+    $("#layerRec").onchange = (e) => (e.target.checked ? mapState.recLayer.addTo(map) : mapState.recLayer.remove());
+    $("#layerPlayers").onchange = async (e) => {
+      if (e.target.checked) { mapState.playerLayer.addTo(map); if (!mapState.playersLoaded) await loadPlayers(); }
+      else mapState.playerLayer.remove();
+      drawLegend();
+    };
+    $("#locateBtn").onclick = locateMissing;
+    await loadRecordings(true);
+  }
+
+  function drawLegend() {
+    const parts = [];
+    if ($("#layerRec").checked) parts.push(
+      `<span><i style="background:${cssVar("--won")}"></i>Recording (bigger = several birds at one place)</span>`,
+      `<span><i style="background:transparent;border:2px dashed ${cssVar("--won")};width:8px;height:8px"></i>Approximate place</span>`,
+      `<span><i style="background:${cssVar("--unfinished")}"></i>Bird switched off</span>`);
+    if ($("#layerPlayers").checked) {
+      parts.push(`<span><i style="background:${cssVar("--lost")}"></i>Players per country: area = rounds played</span>`);
+      if (mapState && mapState.hasHeat) parts.push(`<span><i style="background:linear-gradient(90deg,#fbd3b9,#eb6834,#a8390f);border-radius:3px;width:28px"></i>Player heat by city (city-level GeoIP rounds only)</span>`);
+    }
+    $("#mapLegend").innerHTML = parts.join("");
+  }
+
+  async function loadRecordings(fit) {
+    let data;
+    try { data = await api("/internal/admin/api/map/recordings"); }
+    catch (e) { $("#mapNote").textContent = `Couldn't load recordings: ${e.message}`; return; }
+    const { map, recLayer } = mapState;
+    recLayer.clearLayers();
+    // Group birds recorded at the same spot into one dot.
+    const groups = new Map();
+    for (const p of data.points) {
+      const k = `${p.lat.toFixed(3)},${p.lon.toFixed(3)}`;
+      if (!groups.has(k)) groups.set(k, { lat: p.lat, lon: pacLon(p.lon), approx: p.approx, location: p.location, matched: p.matched, birds: [] });
+      groups.get(k).birds.push(p);
+    }
+    const on = cssVar("--won"), off = cssVar("--unfinished"), ring = cssVar("--surface");
+    const bounds = [];
+    for (const g of groups.values()) {
+      const anyOn = g.birds.some((b) => b.enabled);
+      const r = 6 + 3 * Math.sqrt(g.birds.length - 1);
+      const m = L.circleMarker([g.lat, g.lon], {
+        radius: r, color: g.approx ? (anyOn ? on : off) : ring, weight: 2, dashArray: g.approx ? "3 3" : null,
+        fillColor: anyOn ? on : off, fillOpacity: g.approx ? 0.45 : 0.85,
+      });
+      const birds = g.birds.slice().sort((a, b) => a.common_name.localeCompare(b.common_name));
+      m.bindTooltip(birds.length === 1 ? esc(birds[0].common_name) : `${birds.length} birds`, { direction: "top", offset: [0, -r] });
+      m.bindPopup(`<div class="pop-loc">${esc(g.location || "")}${g.approx ? `<br><em>Approximate: placed by “${esc(g.matched || "")}”</em>` : ""}</div>
+        <ul>${birds.map((b) => `<li><button type="button" class="birdlink" data-bird="${esc(b.bird_id)}">${esc(b.common_name)}</button>${b.enabled ? "" : " <span style=\"color:#7a7974\">(off)</span>"}</li>`).join("")}</ul>`);
+      m.addTo(recLayer);
+      bounds.push([g.lat, g.lon]);
+    }
+    if (fit && bounds.length) map.fitBounds(bounds, { padding: [30, 30], maxZoom: 7 });
+    const notTried = data.unlocated.filter((u) => u.location && !u.looked_up).length;
+    $("#mapNote").textContent = `${data.points.length} recordings at ${groups.size} places` + (data.unlocated.length ? ` · ${data.unlocated.length} not on the map` : "");
+    $("#locateBtn").hidden = !notTried;
+    $("#locateBtn").textContent = `Look up ${notTried} missing location${notTried === 1 ? "" : "s"}`;
+    $("#unlocated").innerHTML = data.unlocated.length ? `<h4 style="font-size:13px;margin:14px 0 6px">Not on the map</h4>
+      <p class="muted" style="font-size:12.5px;margin:0">${data.unlocated.map((u) => `<button type="button" class="birdlink" data-bird="${esc(u.bird_id)}">${esc(u.common_name)}</button> (${esc(u.location || "no location")}${u.location && u.looked_up ? ", place not found" : ""})`).join(" · ")}</p>` : "";
+    drawLegend();
+  }
+
+  async function loadPlayers() {
+    $("#mapNote").textContent = "Loading player countries…";
+    let data;
+    try { data = await api("/internal/admin/api/map/players"); }
+    catch (e) { $("#mapNote").textContent = `Couldn't load players: ${e.message}`; return; }
+    mapState.playersLoaded = true;
+    const { playerLayer } = mapState;
+    playerLayer.clearLayers();
+    const max = Math.max(1, ...data.countries.map((c) => c.rounds));
+    const col = cssVar("--lost"), ring = cssVar("--surface");
+    for (const c of data.countries) {
+      if (c.lat == null) continue;
+      const r = 5 + 35 * Math.sqrt(c.rounds / max);   // area proportional to rounds
+      L.circleMarker([c.lat, pacLon(c.lon)], { radius: r, color: ring, weight: 2, fillColor: col, fillOpacity: 0.6 })
+        .bindTooltip(`${esc(c.name.split(" / ")[0])}: ${c.rounds} round${c.rounds === 1 ? "" : "s"}, ${c.players} player${c.players === 1 ? "" : "s"}`, { direction: "top", offset: [0, -r] })
+        .addTo(playerLayer);
+    }
+    // City-level heat (only rounds recorded with GeoLite2-City have coordinates).
+    const pts = data.points || [];
+    mapState.hasHeat = pts.length > 0;
+    if (pts.length && L.heatLayer) {
+      const maxPt = Math.max(1, ...pts.map((p) => p.rounds));
+      L.heatLayer(pts.map((p) => [p.lat, pacLon(p.lon), 0.35 + 0.65 * (p.rounds / maxPt)]), {
+        radius: 28, blur: 22, maxZoom: 9, minOpacity: 0.35,
+        gradient: { 0.25: "#fbd3b9", 0.55: "#f19a6a", 0.8: "#eb6834", 1: "#a8390f" },
+      }).addTo(playerLayer);
+      // Invisible hover targets so each city can still be identified.
+      for (const p of pts) {
+        L.circleMarker([p.lat, pacLon(p.lon)], { radius: 8, stroke: false, fillOpacity: 0 })
+          .bindTooltip(`${esc([p.city, p.region, p.country].filter(Boolean).join(", "))}: ${p.rounds} round${p.rounds === 1 ? "" : "s"}, ${p.players} player${p.players === 1 ? "" : "s"}`, { direction: "top" })
+          .addTo(playerLayer);
+      }
+    }
+    await loadRecordings(false);   // refresh the note line
+    const placed = data.countries.filter((c) => c.lat != null).length;
+    const cityRounds = pts.reduce((n, p) => n + p.rounds, 0);
+    $("#mapNote").textContent += ` · players from ${placed} countries${data.unknown_rounds ? ` (${data.unknown_rounds} rounds with no country)` : ""}`
+      + (pts.length ? ` · ${cityRounds} rounds with city detail since ${dayLabel(data.points_since, { day: "numeric", month: "short" })}` : " · no city-level data yet");
+    drawLegend();
+  }
+
+  async function locateMissing() {
+    const btn = $("#locateBtn");
+    btn.disabled = true;
+    let total = 0;
+    try {
+      for (;;) {
+        btn.textContent = `Looking up… (${total} done)`;
+        const r = await api("/internal/admin/api/map/locate", { limit: 10 }, { method: "POST" });
+        total += r.looked_up;
+        if (!r.remaining || !r.looked_up) break;
+      }
+      showToast(`Looked up ${total} location${total === 1 ? "" : "s"}.`);
+    } catch (e) { showToast(`Lookup failed: ${e.message}`); }
+    btn.disabled = false;
+    await loadRecordings(false);
+  }
+
   // ---------- tabs ----------
   let upcomingLoaded = false;
-  const TABS = { stats: "#main", upcoming: "#upcomingPanel", birds: "#birdsPanel" };
-  const tabFromHash = () => ({ "#upcoming": "upcoming", "#birds": "birds" }[location.hash] || "stats");
+  const TABS = { stats: "#main", upcoming: "#upcomingPanel", birds: "#birdsPanel", map: "#mapPanel" };
+  const tabFromHash = () => ({ "#upcoming": "upcoming", "#birds": "birds", "#map": "map" }[location.hash] || "stats");
   function showTab(name) {
     if (!TABS[name]) name = "stats";
     document.querySelectorAll(".tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
@@ -1307,6 +1494,7 @@
     if (stats && lastRange) renderChart(lastDays, lastRange);   // width may have changed while hidden
     if (name === "upcoming" && !upcomingLoaded) { upcomingLoaded = true; loadUpcoming(); }
     if (name === "birds" && !editorLoaded) { editorLoaded = true; loadEditor(); }
+    if (name === "map") openMap();
   }
   document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => {
     history.replaceState(null, "", b.dataset.tab === "stats" ? location.pathname + location.search : "#" + b.dataset.tab);
