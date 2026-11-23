@@ -30,6 +30,13 @@ remote() { ssh -i "$SSH_KEY" -o ConnectTimeout=5 -o BatchMode=yes "$REMOTE_HOST"
 SKIP_POWER=false
 [[ "${1:-}" == "--no-power" ]] && SKIP_POWER=true
 
+# If the PC is already on (someone's using it), don't wake it or shut it down.
+if [ "$SKIP_POWER" = false ] && remote "echo ok" &>/dev/null; then
+    echo "$(date): PC already on — will leave it running afterwards"
+    SKIP_POWER=true
+    ALREADY_ON=true
+fi
+
 if [ "$SKIP_POWER" = false ]; then
     echo "$(date): Sending wake-on-LAN packet..."
     wakeonlan "$REMOTE_MAC"
@@ -60,6 +67,7 @@ if [ "$SKIP_POWER" = false ]; then
     notify "Backup complete ✅" "birdle backup finished at $(date '+%H:%M %Z') — sync + shutdown OK" "white_check_mark,floppy_disk"
     remote "sudo shutdown -h now"
 else
-    echo "$(date): Sync complete (--no-power mode, leaving PC as-is)"
-    notify "Backup complete ✅" "birdle backup finished at $(date '+%H:%M %Z') — --no-power mode" "white_check_mark,floppy_disk"
+    why="--no-power mode"; [ "${ALREADY_ON:-false}" = true ] && why="PC was already on, left running"
+    echo "$(date): Sync complete ($why)"
+    notify "Backup complete ✅" "birdle backup finished at $(date '+%H:%M %Z') — $why" "white_check_mark,floppy_disk"
 fi
